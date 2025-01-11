@@ -22,6 +22,8 @@ This project implements a simple knowledge base system in Emacs Lisp, inspired b
    - Alternatively, evaluate the entire buffer with `M-x eval-buffer`.
 
 ## Usage
+![Query Image](query.png)
+
 
 ### Adding Facts
 
