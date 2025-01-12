@@ -1,0 +1,48 @@
+# Git and version control
+.git
+.gitignore
+
+# Build artifacts
+ci/
+*.tar
+*.log
+
+# Dagger module files (exclude from container but keep for build)
+main.go
+go.mod
+go.sum
+dagger.gen.go
+
+# Documentation images
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.#*
+#*#
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node modules (if any)
+node_modules/
+
+# Cache directories
+.cache/
+cache/
+
+# Test outputs
+test-results/
+coverage/

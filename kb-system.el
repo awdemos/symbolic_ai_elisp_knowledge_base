@@ -1,17 +1,20 @@
-;;; kb-system.el --- Knowledge Base System DSL
+;;; kb-system.el --- Knowledge Base System DSL (Legacy Interface)
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, ontology
-;; Version: 1.0
+;; Version: 2.0
 
 ;;; Commentary:
 
-;; This package provides a DSL for developing a custom knowledge base system
-;; based on an ontology for symbolic AI applications.
+;; This package provides backward compatibility for the original knowledge base
+;; system. For new development, use kb-advanced-system.el which provides the full
+;; advanced functionality including microtheories, layered inference,
+;; non-monotonic reasoning, and event reification.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'kb-advanced-system)
 
 ;;; Custom Types
 
@@ -39,23 +42,14 @@
 ;;; Core Functions
 
 (defun kb-system-add-fact (subject predicate object &optional certainty)
-  "Add a fact to the knowledge base."
-  (let* ((certainty (or certainty 1.0))
-         (fact (kb-fact-create :subject subject
-                               :predicate predicate
-                               :object object
-                               :certainty certainty))
-         (facts (gethash subject kb-system-knowledge-base)))
-    (puthash subject (cons fact facts) kb-system-knowledge-base)))
+  "Add a fact to the knowledge base (legacy function)."
+  (with-kb
+    (kb-assert subject predicate object certainty)))
 
 (defun kb-system-query (subject predicate)
-  "Query the knowledge base for facts matching the subject and predicate."
-  (let ((facts (gethash subject kb-system-knowledge-base)))
-    (cl-remove-if-not
-     (lambda (fact)
-       (and (eq (kb-fact-predicate fact) predicate)
-            (> (kb-fact-certainty fact) 0)))
-     facts)))
+  "Query the knowledge base for facts matching the subject and predicate (legacy function)."
+  (with-kb
+    (kb-query subject predicate)))
 
 (defun kb-system-add-rule (name premises conclusion)
   "Add an inference rule to the system."
@@ -65,15 +59,9 @@
     (push rule kb-system-rules)))
 
 (defun kb-system-infer ()
-  "Apply inference rules to derive new facts."
-  (let (new-facts)
-    (dolist (rule kb-system-rules)
-      (let ((bindings (kb-system-match-premises (kb-rule-premises rule))))
-        (dolist (binding bindings)
-          (let ((new-fact (kb-system-apply-bindings (kb-rule-conclusion rule) binding)))
-            (push new-fact new-facts)))))
-    (dolist (fact new-facts)
-      (apply #'kb-system-add-fact fact))))
+  "Apply inference rules to derive new facts (legacy function)."
+  (with-kb
+    (kb-reason)))
 
 (defun kb-system-match-premises (premises)
          "Match premises against the knowledge base, returning possible bindings."
@@ -156,24 +144,27 @@ BINDINGS is a list of pairs where each pair consists of a variable and its value
           (insert-file-contents filename)
           (read (current-buffer)))))
 
-;;; Example Usage
+;;; Legacy Compatibility Notice
 
-(kb-system-add-class 'animal)
-(kb-system-add-class 'mammal 'animal)
-(kb-system-add-class 'human 'mammal)
+;; The following example usage is preserved for backward compatibility.
+;; For new projects, please use the enhanced kb-advanced-system.el API.
 
-(kb-system-add-fact 'Socrates 'is-a 'human)
-(kb-system-add-fact 'human 'is-mortal t)
+;;; Example Usage (Legacy - use kb-demo for new examples)
 
-(kb-system-add-rule 'mortality-rule
-                    '(((?x is-a ?y) (?y is-mortal t)))
-                    '(?x is-mortal t))
+;; (kb-system-add-class 'animal)
+;; (kb-system-add-class 'mammal 'animal)
+;; (kb-system-add-class 'human 'mammal)
 
-(kb-system-infer)
+;; (kb-system-add-fact 'Socrates 'is-a 'human)
+;; (kb-system-add-fact 'human 'is-mortal t)
 
-(kb-system-with-query
- (select Socrates is-mortal)
- (where (> (kb-fact-certainty fact) 0.5)))
+;; (kb-system-add-rule 'mortality-rule
+;;                     '(((?x is-a ?y) (?y is-mortal t)))
+;;                     '(?x is-mortal t))
+
+;; (kb-system-infer)
+
+;; For enhanced queries, use: (kb-demo)
 
 (provide 'kb-system)
 ;;; kb-system.el ends here
