@@ -26,9 +26,8 @@ Here's a list of follow-up TODOs to improve the `kb-system.el` script in markdow
    - Support OpenAI compatible API
 
 6. **Add Persistence Layer**
-   - Implement database integration for storing the knowledge base
-   - Add support for incremental updates and versioning
-   - This should be a vector database. 
+   - Consider implementing alternative persistence methods 
+   - Add support for incremental updates and versioning 
 
 7. **Implement Visualization**
    - Create functions to visualize the knowledge graph

@@ -203,7 +203,7 @@
 
 (defun kb-get-inverse-relation (relation-type)
   "Get the inverse of a relation type."
-  (case relation-type
+  (pcase relation-type
     (:before :after)
     (:after :before)
     (:causes :caused-by)
@@ -212,7 +212,7 @@
     (:enabled-by :enables)
     (:part-of :has-part)
     (:has-part :part-of)
-    (t nil)))
+    (_ nil)))
 
 ;;; Event Reasoning
 
@@ -374,7 +374,7 @@
    (lambda (constraint)
      (let ((property (car constraint))
            (value (cadr constraint)))
-       (case property
+       (pcase property
          (:type (eq (kb-event-type event) value))
          (:participant (member value (kb-event-participants event)))
          (:location (equal (kb-event-location event) value))
@@ -382,7 +382,7 @@
                       (time-less-p (kb-event-start-time event) value)))
          (:after (and (kb-event-end-time event)
                      (time-less-p value (kb-event-end-time event))))
-         (t t))))
+         (_ t))))
    pattern))
 
 ;;; Example Setup

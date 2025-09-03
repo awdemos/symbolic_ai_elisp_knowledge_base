@@ -95,13 +95,13 @@
   "Get microtheory by NAME."
   (gethash name kb-microtheories))
 
-(defun kb-with-microtheory (mt-name &rest body)
+(defmacro kb-with-microtheory (mt-name &rest body)
   "Execute BODY in the context of microtheory MT-NAME."
-  (let ((old-mt kb-current-mt))
-    (setq kb-current-mt mt-name)
-    (unwind-protect
-        (progn ,@body)
-      (setq kb-current-mt old-mt))))
+  `(let ((old-mt kb-current-mt))
+     (setq kb-current-mt ,mt-name)
+     (unwind-protect
+         (progn ,@body)
+       (setq kb-current-mt old-mt))))
 
 (defmacro kb-in-microtheory (mt-name &rest body)
   "Macro version of kb-with-microtheory."

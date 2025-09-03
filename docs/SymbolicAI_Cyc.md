@@ -27,18 +27,29 @@ LLMs excel at language tasks but struggle with:
 - Consistent logical reasoning
 - Providing reliable explanations for their outputs
 - Handling multi-step logical deductions
+- Hallucinations
+
+## The question poised by the author:
+
+> "Why not combine both methods in a novel system and see what happens?"
+
+- Add factual data via structured LLM outputs into Elisp bbased KBs stored on disk, in databbase, or in memory.
+- Allow KB querying by agents
+- Expose KBs to MCP tool calling
+- Merge casual and graph based inference techniques
 
 ## Language Understanding
 
-LLMs have superior natural language processing abilities:
+LLMs have superior natural language processing abilities due to the attention mechanism:
 
 - Can understand and generate fluent human-like text across diverse topics
 - Excel at tasks like translation, summarization, and open-ended dialogue
+- Why not enable self-attention to KB systems?
 
 Cyc has more limited language capabilities:
 
-- Requires specialized languages like CycL for knowledge representation
-- Less adept at processing or generating natural language
+- Requires proprietary scripting language CycL married to Emacs and SVN for knowledge representation
+- Inept at generating longform natural language
 
 ## Scalability and Learning
 
@@ -51,7 +62,7 @@ LLMs can:
 Cyc faces challenges in:
 
 - Scaling its manually-curated knowledge base
-- Quickly incorporating new information
+- Dynamically incorporating new information
 - Adapting to entirely new domains without significant human effort
 
 ## Strengths and Weaknesses
@@ -60,13 +71,14 @@ Cyc's strengths:
 - Logical consistency within domains
 - Auditable reasoning processes
 - Reliable for specific, well-defined tasks
+- Hallucination free reasoning
 
 LLMs' strengths:
 - Broad knowledge across many domains
 - Flexibility in handling diverse language tasks
 - Ability to generate creative and contextually relevant responses
 
-In summary, Cyc represents a symbolic AI approach focused on explicit knowledge and logical reasoning, while LLMs use statistical learning to process and generate language. Each has distinct advantages, and some researchers suggest that combining these approaches could lead to more robust and trustworthy AI systems.
+In summary, Cyc represents a symbolic AI approach focused on explicit knowledge and logical reasoning, while LLMs use statistical learning to process and generate language. These approaches do not have to be a binary `either or` they can be combined to varying degrees depending on use case.
 
 Citations:
 [2] https://www.leewayhertz.com/comparison-of-llms/

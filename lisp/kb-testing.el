@@ -296,11 +296,11 @@
       (cl-incf (kb-test-result-total-tests results))
       (kb-run-test test)
       
-      (case (kb-test-status test)
+      (pcase (kb-test-status test)
         (:passed (cl-incf (kb-test-result-passed results)))
         (:failed (cl-incf (kb-test-result-failed results)))
         (:error (cl-incf (kb-test-result-errors results)))
-        (t (cl-incf (kb-test-result-skipped results)))))
+        (_ (cl-incf (kb-test-result-skipped results)))))
     
     ;; Suite teardown
     (when (kb-test-suite-teardown-fn suite)

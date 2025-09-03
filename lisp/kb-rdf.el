@@ -329,25 +329,25 @@
         (object-type (kb-rdf-triple-object-type triple))
         (datatype (kb-rdf-triple-datatype triple)))
     
-    (case object-type
+    (pcase object-type
       (:uri (kb-rdf-uri-to-symbol object))
       (:literal 
        (if datatype
            (kb-rdf-convert-typed-literal object datatype)
          object))
       (:blank-node (intern object))
-      (t object))))
+      (_ object))))
 
 (defun kb-rdf-convert-typed-literal (value datatype)
   "Convert a typed RDF literal to appropriate Lisp type."
   (let ((type-mapping (assoc datatype kb-rdf-type-mapping)))
     (if type-mapping
-        (case (cdr type-mapping)
-          (integer (string-to-number value))
-          (float (string-to-number value))
-          (boolean (not (member value '("false" "0"))))
-          (datetime value)  ; Keep as string for now
-          (t value))
+        (pcase (cdr type-mapping)
+          ('integer (string-to-number value))
+          ('float (string-to-number value))
+          ('boolean (not (member value '("false" "0"))))
+          ('datetime value)  ; Keep as string for now
+          (_ value))
       value)))
 
 ;;; Export from Knowledge Base
@@ -373,10 +373,10 @@
              (kb-microtheory-facts mt))
     
     ;; Generate output
-    (case format
+    (pcase format
       (:turtle (kb-rdf-serialize-turtle triples))
       (:rdf-xml (kb-rdf-serialize-xml triples))
-      (t (error "Unsupported format: %s" format)))))
+      (_ (error "Unsupported format: %s" format)))))
 
 (defun kb-symbol-to-uri (symbol)
   "Convert a Lisp symbol to an RDF URI."
@@ -417,10 +417,10 @@
 
 (defun kb-rdf-format-turtle-term (term type)
   "Format a term for Turtle output."
-  (case type
+  (pcase type
     (:uri (format "<%s>" term))
     (:literal (format "\"%s\"" term))
-    (t (format "\"%s\"" term))))
+    (_ (format "\"%s\"" term))))
 
 ;;; High-level Import Functions
 
@@ -434,10 +434,10 @@
         (format (or format 
                    (kb-rdf-detect-format filename))))
     
-    (let ((document (case format
+    (let ((document (pcase format
                       (:rdf-xml (kb-rdf-parse-xml content))
                       (:turtle (kb-rdf-parse-turtle content))
-                      (t (error "Unsupported format: %s" format)))))
+                      (_ (error "Unsupported format: %s" format)))))
       
       (kb-rdf-import-document document target-mt))))
 
@@ -451,10 +451,10 @@
                    (buffer-substring (point) (point-max))))
         (format (or format :rdf-xml)))
     
-    (let ((document (case format
+    (let ((document (pcase format
                       (:rdf-xml (kb-rdf-parse-xml content))
                       (:turtle (kb-rdf-parse-turtle content))
-                      (t (error "Unsupported format: %s" format)))))
+                      (_ (error "Unsupported format: %s" format)))))
       
       (kb-rdf-import-document document target-mt))))
 

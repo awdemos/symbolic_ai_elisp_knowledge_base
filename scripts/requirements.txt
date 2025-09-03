@@ -1,0 +1,6 @@
+outlines[transformers]>=0.0.34
+outlines[openai]>=0.0.34
+pydantic>=2.0.0
+transformers>=4.30.0
+torch>=2.0.0
+openai>=1.0.0
