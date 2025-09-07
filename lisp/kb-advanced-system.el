@@ -22,6 +22,9 @@
 (require 'kb-cache)
 (require 'kb-testing)
 (require 'kb-rdf)
+(require 'kb-tms)
+(require 'kb-persistence)
+(require 'kb-validation)
 
 
 ;;; High-level API
@@ -76,8 +79,10 @@ CERTAINTY is the confidence level of the fact.
 TEMPORAL-INFO specifies temporal constraints for the fact.
 MT specifies the microtheory to assert into."
   (interactive "sSubject: \nsPredicate: \nsObject: ")
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (kb-add-fact subject predicate object certainty temporal-info)))
+  (kb-with-validation kb-assert (list subject predicate object certainty temporal-info mt)
+    (kb-with-error-recovery
+      (let ((kb-current-mt (or mt kb-current-mt)))
+        (kb-add-fact subject predicate object certainty temporal-info)))))
 
 ;;;###autoload
 (defun kb-assert-temporal (subject predicate object valid-from valid-to &optional certainty mt)
@@ -87,19 +92,25 @@ VALID-FROM specifies the start time for the fact's validity.
 VALID-TO specifies the end time for the fact's validity.
 CERTAINTY is the confidence level of the fact.
 MT specifies the microtheory to assert into."
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (kb-add-temporal-fact subject predicate object valid-from valid-to certainty)))
+  (kb-with-error-recovery
+    ;; Create temporal-info structure for validation
+    (let ((temporal-info (list :valid-from valid-from :valid-to valid-to)))
+      (kb-with-validation kb-assert (list subject predicate object certainty temporal-info mt)
+        (let ((kb-current-mt (or mt kb-current-mt)))
+          (kb-add-temporal-fact subject predicate object valid-from valid-to certainty))))))
 
 ;;;###autoload
 (defun kb-retract (subject predicate object &optional mt)
   "Retract a fact from the knowledge base.
 SUBJECT, PREDICATE and OBJECT identify the fact to retract.
 MT specifies the microtheory to retract from."
-  (let* ((kb-current-mt (or mt kb-current-mt))
-         (facts (kb-query-with-inheritance subject predicate mt)))
-    (dolist (fact facts)
-      (when (equal (kb-fact-object fact) object)
-        (kb-remove-fact fact)))))
+  (kb-with-validation kb-retract (list subject predicate object mt)
+    (kb-with-error-recovery
+      (let* ((kb-current-mt (or mt kb-current-mt))
+             (facts (kb-query-with-inheritance subject predicate mt)))
+        (dolist (fact facts)
+          (when (equal (kb-fact-object fact) object)
+            (kb-remove-fact fact)))))))
 
 ;;;###autoload
 (defun kb-query (subject predicate &optional mt)
@@ -107,8 +118,10 @@ MT specifies the microtheory to retract from."
 SUBJECT and PREDICATE identify the facts to query.
 MT specifies the microtheory to query in."
   (interactive "sSubject: \nsPredicate: ")
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (kb-query-with-inheritance subject predicate mt)))
+  (kb-with-validation kb-query (list subject predicate mt)
+    (kb-with-error-recovery
+      (let ((kb-current-mt (or mt kb-current-mt)))
+        (kb-query-with-inheritance subject predicate mt)))))
 
 ;;;###autoload
 (defun kb-ask (query &optional mt timeout)
@@ -116,8 +129,14 @@ MT specifies the microtheory to query in."
 QUERY specifies the complex query to evaluate.
 MT specifies the microtheory to query in.
 TIMEOUT specifies the maximum time to spend on inference."
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (kb-inference-strategist query mt timeout)))
+  (kb-with-error-recovery
+    (when mt
+      (kb-validate-microtheory-name mt)
+      (kb-validate-microtheory-exists mt t))
+    (when timeout
+      (kb-validate-number timeout nil 0))
+    (let ((kb-current-mt (or mt kb-current-mt)))
+      (kb-inference-strategist query mt timeout))))
 
 ;;; Rule Management API
 
@@ -130,16 +149,21 @@ CONCLUSION specifies the rule's outcome.
 PRIORITY specifies the rule's priority level.
 TEMPORAL-P specifies if rule handles temporal logic.
 MT specifies the microtheory to add rule to."
-  (let* ((kb-current-mt (or mt kb-current-mt))
-         (mt (kb-get-microtheory kb-current-mt))
-         (rule (kb-rule-create
-                :name name
-                :premises premises
-                :conclusion conclusion
-                :microtheory kb-current-mt
-                :priority (or priority 1.0)
-                :temporal-p temporal-p)))
-    (push rule (kb-microtheory-rules mt))))
+  (kb-with-validation kb-add-rule (list name premises conclusion priority temporal-p mt)
+    (kb-with-error-recovery
+      (let* ((kb-current-mt (or mt kb-current-mt))
+             (mt-obj (kb-get-microtheory kb-current-mt)))
+        (unless mt-obj
+          (signal 'kb-microtheory-error (list "Microtheory not found" kb-current-mt)))
+        (let ((rule (kb-rule-create
+                     :name name
+                     :premises premises
+                     :conclusion conclusion
+                     :microtheory kb-current-mt
+                     :priority (or priority 1.0)
+                     :temporal-p temporal-p)))
+          (push rule (kb-microtheory-rules mt-obj))
+          rule)))))
 
 ;;;###autoload
 (defun kb-add-default (name premises conclusion &optional exceptions strength specificity mt)
@@ -455,38 +479,56 @@ MT-NAME specifies the microtheory to switch to."
         (message "Switched to microtheory: %s" mt-name))
     (error "Microtheory %s does not exist" mt-name)))
 
-;;; Import/Export
+;;; Persistence API
 
 ;;;###autoload
-(defun kb-save (filename)
-  "Save the entire knowledge base to a file.
-FILENAME specifies the file to save to."
+(defun kb-save (filename &optional incremental-p)
+  "Save the entire knowledge base to a file with enhanced persistence.
+FILENAME specifies the file to save to.
+If INCREMENTAL-P is true, save only changes since last save."
   (interactive "FSave KB to: ")
-  (with-temp-file filename
-    (prin1 (list :microtheories kb-microtheories
-                 :events kb-events
-                 :processes kb-processes
-                 :default-rules kb-default-rules
-                 :exceptions kb-exceptions
-                 :justifications kb-justifications)
-           (current-buffer))))
+  (kb-persist-save filename incremental-p))
 
 ;;;###autoload
-(defun kb-load (filename)
-  "Load a knowledge base from a file.
-FILENAME specifies the file to load from."
+(defun kb-load (filename &optional merge-p)
+  "Load a knowledge base from a file with enhanced persistence.
+FILENAME specifies the file to load from.
+If MERGE-P is true, merge with existing data instead of replacing."
   (interactive "fLoad KB from: ")
-  (when (file-exists-p filename)
-    (let ((data (with-temp-buffer
-                  (insert-file-contents filename)
-                  (read (current-buffer)))))
-      (setq kb-microtheories (plist-get data :microtheories)
-            kb-events (plist-get data :events)
-            kb-processes (plist-get data :processes)
-            kb-default-rules (plist-get data :default-rules)
-            kb-exceptions (plist-get data :exceptions)
-            kb-justifications (plist-get data :justifications))
-      (message "Knowledge base loaded from %s" filename))))
+  (kb-persist-load filename merge-p))
+
+;;;###autoload
+(defun kb-backup ()
+  "Create a backup of the current KB state."
+  (interactive)
+  (let ((backup-file (format "kb-backup-%s.el"
+                            (format-time-string "%Y%m%d-%H%M%S"))))
+    (kb-persist-save backup-file)
+    (message "KB backed up to %s" backup-file)))
+
+;;;###autoload
+(defun kb-incremental-save (filename)
+  "Save only changed data since last full save."
+  (interactive "FSave incremental KB to: ")
+  (kb-incremental-save filename))
+
+;;;###autoload
+(defun kb-auto-save-enable (interval filename)
+  "Enable automatic saving every INTERVAL seconds to FILENAME."
+  (interactive "nAuto-save interval (seconds): \nFAuto-save file: ")
+  (kb-auto-save-enable interval filename))
+
+;;;###autoload
+(defun kb-auto-save-disable ()
+  "Disable automatic saving."
+  (interactive)
+  (kb-auto-save-disable))
+
+;;;###autoload
+(defun kb-validate-kb ()
+  "Validate consistency of the entire KB."
+  (interactive)
+  (kb-validate-consistency))
 
 ;;; Interactive Commands
 

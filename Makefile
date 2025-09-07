@@ -21,8 +21,8 @@ compile: $(COMPILED_FILES)
 	$(EMACS) -Q -batch -L lisp -f batch-byte-compile $<
 
 # Run tests
-test:
-	@echo "No tests available"
+test: compile
+	$(EMACS) -Q -batch -L lisp -l test/run-tests.el -f ert-run-tests-batch-and-exit
 
 # Clean compiled files
 clean:

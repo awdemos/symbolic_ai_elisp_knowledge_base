@@ -14,6 +14,7 @@
 
 (require 'cl-lib)
 (require 'kb-microtheories)
+(require 'kb-validation)
 
 ;;; Event Structures
 
@@ -73,25 +74,30 @@
 
 (defun kb-create-event (type &rest properties)
   "Create a new event instance."
-  (let* ((event-id (intern (format "Event-%d" (cl-incf kb-event-counter))))
-         (event (kb-event-create
-                :id event-id
-                :type type
-                :participants (plist-get properties :participants)
-                :roles (plist-get properties :roles)
-                :start-time (plist-get properties :start-time)
-                :end-time (plist-get properties :end-time)
-                :duration (plist-get properties :duration)
-                :location (plist-get properties :location)
-                :properties properties
-                :microtheory kb-current-mt)))
-    
-    (puthash event-id event kb-events)
-    
-    ;; Add facts about this event to the knowledge base
-    (kb-add-event-facts event)
-    
-    event-id))
+  (kb-with-validation kb-create-event (cons type properties)
+    (kb-with-error-recovery
+      (let* ((event-id (intern (format "Event-%d" (cl-incf kb-event-counter))))
+             (event (kb-event-create
+                    :id event-id
+                    :type type
+                    :participants (plist-get properties :participants)
+                    :roles (plist-get properties :roles)
+                    :start-time (plist-get properties :start-time)
+                    :end-time (plist-get properties :end-time)
+                    :duration (plist-get properties :duration)
+                    :location (plist-get properties :location)
+                    :properties properties
+                    :microtheory kb-current-mt)))
+        
+        (puthash event-id event kb-events)
+        
+        ;; Add facts about this event to the knowledge base with error recovery
+        (condition-case err
+            (kb-add-event-facts event)
+          (error 
+           (message "Failed to add event facts: %s" (error-message-string err))))
+        
+        event-id))))
 
 (defun kb-add-event-facts (event)
   "Add facts about an event to the knowledge base."
