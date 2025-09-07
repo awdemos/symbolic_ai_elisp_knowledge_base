@@ -66,7 +66,77 @@ pip install -r requirements.txt
 
 ## Core API
 
+<<<<<<< Updated upstream
 ### Basic Operations (Working)
+||||||| Stash base
+# Test: Run automated test suite
+dagger call test
+
+# Build: Create Docker image
+dagger call build
+```
+
+**Run the Container:**
+```bash
+# After pipeline completes, run the built image
+docker run -it symbolic-ai-kb:latest
+
+# Or run with custom tag
+docker run -it kb-advanced-system:v2.1
+```
+
+#### Pipeline Features
+
+The Dagger CI/CD pipeline provides:
+
+- **🔍 Linting**: Emacs Lisp syntax validation and style checking
+- **🧪 Testing**: Automated execution of the knowledge base test suite
+- **🏗️ Building**: Docker image creation from the project Dockerfile
+- **🏷️ Tagging**: Local Docker registry tagging (equivalent to `docker build -t tag .`)
+
+This replaces traditional `make` and `docker build` workflows with a modern, containerized CI/CD approach that produces the same result as running `docker build -t kb-advanced-system:v2.1 .` in your project directory.
+
+**Prerequisites**: 
+- [Dagger](https://dagger.io/) installed
+- Docker running locally
+
+## Quick Start
+
+### Basic Usage
+# Test: Run automated test suite
+dagger call test
+
+# Build: Create Docker image
+dagger call build
+```
+
+**Run the Container:**
+```bash
+# After pipeline completes, run the built image
+docker run -it symbolic-ai-kb:latest
+
+# Or run with custom tag
+docker run -it kb-advanced-system:v2.1
+```
+
+#### Pipeline Features
+
+The Dagger CI/CD pipeline provides:
+
+- **🔍 Linting**: Emacs Lisp syntax validation and style checking
+- **🧪 Testing**: Automated execution of the knowledge base test suite
+- **🏗️ Building**: Docker image creation from the project Dockerfile
+- **🏷️ Exporting**: Export built image to local Docker daemon (equivalent to `docker build -t tag .`)
+
+This replaces traditional `make` and `docker build` workflows with a modern, containerized CI/CD approach that produces the same result as running `docker build -t kb-advanced-system:v2.1 .` in your project directory.
+
+**Prerequisites**: 
+- [Dagger](https://dagger.io/) installed
+- Docker running locally
+
+## Quick Start
+
+### Basic Usage
 
 ```elisp
 ;; Initialize system (do only once)
