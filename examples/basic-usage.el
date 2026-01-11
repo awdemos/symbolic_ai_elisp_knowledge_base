@@ -19,8 +19,8 @@
 ;; Query with inference
 (kb-ask '(Socrates is-a))
 
-;; Use microtheories
-(kb-create-microtheory 'ScientificMt 'BaseMt)
+ ;; Use microtheories
+ (kb-create-microtheory 'ScientificMt '(BaseMt))
 (in-microtheory ScientificMt
   (kb-assert 'water 'chemical-formula 'H2O)
   (kb-assert 'water 'boiling-point 100))

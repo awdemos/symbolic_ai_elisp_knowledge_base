@@ -59,7 +59,7 @@
                    :start-time "2025-01-01T10:00:00")
   
   ;; Create another microtheory
-  (kb-create-microtheory 'TestMt 'BaseMt)
+  (kb-create-microtheory 'TestMt '(BaseMt))
   (in-microtheory TestMt
     (kb-assert 'Tweety 'is-a 'bird 1.0)
     (kb-assert 'Tweety 'color 'yellow 1.0)))

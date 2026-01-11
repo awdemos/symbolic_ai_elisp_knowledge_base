@@ -20,7 +20,7 @@
   (kb-assert 'Socrates 'is-a 'human)
   (let ((result (kb-query 'Socrates 'is-a)))
     (should result)
-    (should (member 'human result))))
+    (should (member 'human (mapcar #'kb-fact-object result)))))
 
 (ert-deftest test-inheritance-reasoning ()
   "Test inheritance through is-a relations."
@@ -29,8 +29,8 @@
   (kb-assert 'human 'is-a 'mammal)
   (kb-reason)
   (let ((result (kb-ask '(Socrates is-a))))
-    (should (member 'human result))
-    (should (member 'mammal result))))
+    (should (member 'human (mapcar #'kb-fact-object result)))
+    (should (member 'mammal (mapcar #'kb-fact-object result)))))
 
 (ert-deftest test-multiple-facts ()
   "Test storing and retrieving multiple facts."
@@ -39,9 +39,9 @@
   (kb-assert 'Socrates 'nationality 'Greek)
   (kb-assert 'Plato 'is-a 'human)
   
-  (should (member 'human (kb-query 'Socrates 'is-a)))
-  (should (member 'Greek (kb-query 'Socrates 'nationality)))
-  (should (member 'human (kb-query 'Plato 'is-a))))
+  (should (member 'human (mapcar #'kb-fact-object (kb-query 'Socrates 'is-a))))
+  (should (member 'Greek (mapcar #'kb-fact-object (kb-query 'Socrates 'nationality))))
+  (should (member 'human (mapcar #'kb-fact-object (kb-query 'Plato 'is-a)))))
 
 (ert-deftest test-kb-status ()
   "Test that kb-status returns meaningful information."

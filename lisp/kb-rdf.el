@@ -299,7 +299,7 @@
     
     ;; Ensure target microtheory exists
     (unless (kb-get-microtheory target-mt)
-      (kb-create-microtheory target-mt 'CommonSenseMt))
+      (kb-create-microtheory target-mt '(CommonSenseMt)))
     
     ;; Import each triple
     (dolist (triple (kb-rdf-document-triples document))

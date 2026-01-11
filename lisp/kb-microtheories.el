@@ -79,7 +79,14 @@
 (defun kb-create-microtheory (name &optional parent-mts priority inheritance-mode)
   "Create a new microtheory with NAME and optional PARENT-MTS.
 PRIORITY determines specificity for conflict resolution (higher = more specific).
-INHERITANCE-MODE can be 'strict, 'override, or 'merge."
+INHERITANCE-MODE can be 'strict, 'override, or 'merge.
+Returns existing microtheory if it already exists."
+  ;; If microtheory already exists, return it
+  (let ((existing (kb-get-microtheory name)))
+    (when existing
+      (message "Microtheory %s already exists, returning existing" name)
+      existing))
+  
   (kb-with-validation kb-create-microtheory (list name parent-mts priority inheritance-mode)
     (kb-with-error-recovery
       (let* ((parent-list (cond
@@ -87,11 +94,11 @@ INHERITANCE-MODE can be 'strict, 'override, or 'merge."
                           ((listp parent-mts) parent-mts)
                           (t (list parent-mts))))
              (priority (or priority 
-                          (if parent-list 
-                              (condition-case nil
-                                  (1+ (apply #'max (mapcar #'kb-get-microtheory-priority parent-list)))
-                                (error 1)) ; fallback priority if parent priorities unavailable
-                            0)))
+                           (if parent-list 
+                               (condition-case nil
+                                   (1+ (apply #'max (mapcar #'kb-get-microtheory-priority parent-list)))
+                                 (error 1)) ; fallback priority if parent priorities unavailable
+                             0)))
              (mt (kb-microtheory-create
                   :name name
                   :parent-mts parent-list
@@ -704,10 +711,10 @@ If LOCAL-P is t, the fact won't be inherited by child microtheories."
 
 ;; Create common microtheories with proper inheritance
 (unless (kb-get-microtheory 'CommonSenseMt)
-  (kb-create-microtheory 'CommonSenseMt 'BaseMt 1 'merge))
+  (kb-create-microtheory 'CommonSenseMt '(BaseMt) 1 'merge))
 
 (unless (kb-get-microtheory 'TemporalMt)
-  (kb-create-microtheory 'TemporalMt 'BaseMt 1 'override))
+  (kb-create-microtheory 'TemporalMt '(BaseMt) 1 'override))
 
 (provide 'kb-microtheories)
 ;;; kb-microtheories.el ends here

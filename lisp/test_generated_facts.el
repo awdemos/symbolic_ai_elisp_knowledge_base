@@ -8,9 +8,9 @@
 (unless (boundp 'kb-current-mt)
   (kb-init))
 
-;; Create and switch to microtheory ScientistMt
-(unless (kb-get-microtheory 'ScientistMt)
-  (kb-create-microtheory 'ScientistMt 'CommonSenseMt))
+ ;; Create and switch to microtheory ScientistMt
+ (unless (kb-get-microtheory 'ScientistMt)
+   (kb-create-microtheory 'ScientistMt '(CommonSenseMt)))
 
 (in-microtheory ScientistMt
   ;; Extracted facts (6 total)

@@ -34,16 +34,16 @@
 ;; 2. Demonstrate microtheory validation
 (message "\n2. Testing microtheory validation...")
 
-;; Valid microtheory creation
-(message "✓ Valid microtheory creation:")
-(kb-create-microtheory 'TestMt 'BaseMt)
-(message "   Successfully created microtheory: TestMt")
-
-;; Invalid microtheory - already exists
-(message "✗ Invalid microtheory creation (already exists):")
-(condition-case err
-    (kb-create-microtheory 'TestMt 'BaseMt)
-  (error (message "   Caught error: %s" (error-message-string err))))
+ ;; Valid microtheory creation
+ (message "✓ Valid microtheory creation:")
+ (kb-create-microtheory 'TestMt '(BaseMt))
+ (message "   Successfully created microtheory: TestMt")
+ 
+ ;; Invalid microtheory - already exists
+ (message "✗ Invalid microtheory creation (already exists):")
+ (condition-case err
+     (kb-create-microtheory 'TestMt '(BaseMt))
+   (error (message "   Caught error: %s" (error-message-string err))))
 
 ;; Invalid microtheory name
 (message "✗ Invalid microtheory creation (bad name):")

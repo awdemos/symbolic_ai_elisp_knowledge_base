@@ -26,8 +26,8 @@
   
   ;; Test 2: Multiple inheritance with conflict resolution
   (message "\n=== Test 2: Multiple Inheritance ===")
-  (kb-create-microtheory 'PhilosophyMt 'BaseMt 2 'override)
-  (kb-create-microtheory 'GreekMt 'BaseMt 2 'merge)
+  (kb-create-microtheory 'PhilosophyMt '(BaseMt) 2 'override)
+  (kb-create-microtheory 'GreekMt '(BaseMt) 2 'merge)
   (kb-create-microtheory 'AncientPhilosopherMt (list 'PhilosophyMt 'GreekMt) 4 'merge)
   
   (kb-with-microtheory 'PhilosophyMt

@@ -181,7 +181,7 @@
 (defun kb-create-temp-test-microtheory (test-name)
   "Create a temporary microtheory for testing."
   (let ((mt-name (intern (format "TestMt-%s-%d" test-name (random 10000)))))
-    (kb-create-microtheory mt-name 'CommonSenseMt)
+    (kb-create-microtheory mt-name '(CommonSenseMt))
     (push mt-name kb-test-temp-microtheories)
     mt-name))
 
@@ -458,7 +458,7 @@
       (kb-with-test-microtheory parent-mt
         (kb-assert 'parent-fact 'test-prop 'parent-value)
         
-        (let ((child-mt (kb-create-microtheory 'child-mt parent-mt)))
+        (let ((child-mt (kb-create-microtheory 'child-mt (list parent-mt))))
           (kb-with-microtheory child-mt
             ;; Should be able to query parent facts from child
             (kb-assert-fact-exists 'parent-fact 'test-prop 'parent-value)))))

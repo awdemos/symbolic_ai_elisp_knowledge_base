@@ -1,4 +1,5 @@
 ;;; kb-advanced-system.el --- Unified Advanced Knowledge Base System
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, reasoning, microtheories
@@ -38,9 +39,12 @@ Optional BASE-MT specifies the base microtheory to use."
   ;; Initialize microtheories
   (unless (kb-get-microtheory 'BaseMt)
     (kb-create-microtheory 'BaseMt))
-  (kb-create-microtheory 'CommonSenseMt 'BaseMt)
-  (kb-create-microtheory 'TemporalMt 'BaseMt)
-  (kb-create-microtheory 'EventMt 'BaseMt)
+  (unless (kb-get-microtheory 'CommonSenseMt)
+    (kb-create-microtheory 'CommonSenseMt '(BaseMt)))
+  (unless (kb-get-microtheory 'TemporalMt)
+    (kb-create-microtheory 'TemporalMt '(BaseMt)))
+  (unless (kb-get-microtheory 'EventMt)
+    (kb-create-microtheory 'EventMt '(BaseMt)))
   
   ;; Initialize inference engine
   (kb-init-inference-engine)
@@ -628,9 +632,9 @@ If MERGE-P is true, merge with existing data instead of replacing."
 (kb-assert-temporal 'John 'location 'office "2025-01-01" "2025-01-02")
   (funcall output-fn "  John's location Jan 1-2, 2025: office")
   
-  ;; Microtheory demonstration
+   ;; Microtheory demonstration
   (funcall output-fn "Microtheory isolation:")
-(kb-create-microtheory 'TestMt 'BaseMt)
+(kb-create-microtheory 'TestMt '(BaseMt))
 (in-microtheory TestMt
   (kb-assert 'unicorn 'exists t)
   (funcall output-fn "  In TestMt: unicorn exists = %s" 
