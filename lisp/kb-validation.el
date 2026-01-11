@@ -208,7 +208,7 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
   
   t)
 
-(defun kb-validate-rule-premises (premises)
+(defun kb-validate-rule-premises-structure (premises)
   "Validate rule PREMISES structure."
   (unless premises
     (signal 'kb-rule-error '("Rule premises cannot be nil")))
@@ -316,9 +316,9 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
   t)
 
 (defun kb-validate-rule-params (name premises conclusion &optional priority temporal-p mt)
-  "Validate parameters for kb-add-rule function."
+  "Validate parameters for creating a rule."
   (kb-validate-rule-name name)
-  (kb-validate-rule-premises premises)
+  (kb-validate-rule-premises-structure premises)
   (kb-validate-rule-conclusion conclusion)
   (kb-validate-rule-priority priority)
   (when mt
