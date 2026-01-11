@@ -438,10 +438,10 @@ BODY contains the query expressions to execute."
                       `(setq ,result-var (cl-subseq ,result-var 0 (min ,n (length ,result-var)))))
                      (`(ask ,query)
                       `(setq ,result-var (kb-inference-strategist ',query ,mt-var)))
-                     (`(in-mt ,mt)
-                      `(setq ,mt-var ',mt))
-                     (t expr)))
-                 body)
+                      (`(in-mt ,mt)
+                       `(setq ,mt-var ',mt))
+                      (_ expr)))
+                  body)
        ,result-var)))
 
 ;;; Introspection API

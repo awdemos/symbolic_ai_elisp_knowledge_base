@@ -1,4 +1,5 @@
 ;;; kb-microtheories.el --- Microtheory System with Inheritance for Knowledge Base
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant  
 ;; Keywords: ai, knowledge base, microtheories, context, inheritance

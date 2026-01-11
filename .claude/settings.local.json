@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git add:*)",
+      "Bash(npm install:*)",
+      "Read(//Users/a/code/efrit/**)",
+      "Bash(npm start)",
+      "Bash(find:*)",
+      "Bash(claude mcp:*)",
+      "Bash(emacs:*)",
+      "Bash(pkill:*)",
+      "Read(//Users/a/**)",
+      "Bash(env:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(node:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
