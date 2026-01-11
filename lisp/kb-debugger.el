@@ -1,4 +1,5 @@
 ;;; kb-debugger.el --- Knowledge Base Debugging and Introspection Tools
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, debugging, introspection, visualization
@@ -9,370 +10,270 @@
 ;; This package provides debugging and introspection tools for the knowledge base
 ;; system, including inference tracing, visualization, and validation tools.
 
+;; Features:
+;; - Inference step-by-step tracing
+;; - Knowledge base state visualization
+;; - Performance profiling
+;; - Interactive query debugging
+;; - Rule firing analysis
+;; - Fact dependency tracking
+
 ;;; Code:
 
 (require 'cl-lib)
 (require 'kb-microtheories)
-(require 'kb-inference-engine)
-
-;;; Debug Structures
-
-(cl-defstruct (kb-debug-trace (:constructor kb-debug-trace-create)
-                              (:copier nil))
-  "A trace of an inference step."
-  step-number
-  operation              ; :query, :rule-application, :default-application
-  input                  ; what went in
-  output                 ; what came out
-  worker                 ; which inference worker was used
-  microtheory           ; context
-  justification         ; why this step was taken
-  timestamp
-  duration)
-
-(cl-defstruct (kb-debug-session (:constructor kb-debug-session-create)
-                                (:copier nil))
-  "A debugging session."
-  id
-  start-time
-  query
-  microtheory
-  traces                 ; list of debug traces
-  final-result
-  total-duration
-  status)                ; :running, :completed, :failed
+(require 'kb-tms)
 
 ;;; Variables
 
 (defvar kb-debug-enabled nil
-  "Whether debugging is currently enabled.")
+  "Whether debugging is enabled.")
 
-(defvar kb-debug-current-session nil
-  "Current debugging session.")
+(defvar kb-debug-trace-level 0
+  "Debug trace level (0=off, 1=basic, 2=detailed, 3=verbose).")
 
-(defvar kb-debug-sessions (make-hash-table :test 'equal)
-  "Hash table of all debug sessions.")
+(defvar kb-debug-log-max-size 1000
+  "Maximum number of debug entries to keep.")
 
-(defvar kb-debug-session-counter 0
-  "Counter for generating debug session IDs.")
+(defvar kb-debug-log nil
+  "List of debug log entries.")
 
-(defvar kb-debug-max-sessions 50
-  "Maximum number of debug sessions to keep.")
+(defvar kb-debug-profile-data nil
+  "Hash table for profiling data.")
 
-;;; Core Debugging Functions
+;;; Structures
 
+(cl-defstruct (kb-debug-entry (:constructor kb-debug-entry-create)
+                            (:copier nil))
+  timestamp
+  operation
+  details
+  microtheory
+  duration)
+
+(cl-defstruct (kb-profile-entry (:constructor kb-profile-entry-create)
+                           (:copier nil))
+  operation
+  count
+  total-time
+  avg-time
+  min-time
+  max-time)
+
+;;; Debug Logging API
+
+;;;###autoload
+(defun kb-debug-log-entry (operation &rest details)
+  "Log a debug entry.
+OPERATION is the name of the operation being logged.
+DETAILS are additional information to log."
+  (when kb-debug-enabled
+    (let ((entry (kb-debug-entry-create
+                 :timestamp (current-time)
+                 :operation operation
+                 :details details
+                 :microtheory kb-current-mt
+                 :duration nil)))
+      (push entry kb-debug-log)
+      ;; Prune log if too large
+      (when (> (length kb-debug-log) kb-debug-log-max-size)
+        (setq kb-debug-log (cl-subseq kb-debug-log 0 kb-debug-log-max-size))))))
+
+;;;###autoload
+(defun kb-debug-show-log (&optional count)
+  "Show recent debug log entries.
+COUNT is the number of recent entries to show (default 10)."
+  (interactive "nShow debug log (recent N): ")
+  (let ((n (or count 10)))
+    (with-output-to-temp-buffer "*KB Debug Log*"
+      (princ (format "KB Debug Log - Last %d entries:\n\n" n))
+      (dolist (entry (cl-subseq kb-debug-log 0 (min n (length kb-debug-log))))
+        (let ((time-str (format-time-string "%Y-%m-%d %H:%M:%S" (kb-debug-entry-timestamp entry))))
+          (princ (format "[%s] %s\n" time-str (kb-debug-entry-operation entry)))
+          (princ "  Details:\n")
+          (dolist (detail (kb-debug-entry-details entry))
+            (princ (format "    %s\n" detail)))
+          (princ "  Microtheory: ")
+          (princ (format "%s\n" (or (kb-debug-entry-microtheory entry) "N/A")))
+          (princ "\n")))
+      (help-mode))))
+
+;;;###autoload
+(defun kb-debug-clear-log ()
+  "Clear the debug log."
+  (interactive)
+  (setq kb-debug-log nil)
+  (message "Debug log cleared"))
+
+;;; Profiling API
+
+;;;###autoload
+(defun kb-debug-profile-start (operation)
+  "Start profiling an operation.
+OPERATION is the name of the operation to profile."
+  (puthash operation (list 0 0.0 0.0 most-positive-fixnum 0.0) kb-debug-profile-data))
+
+;;;###autoload
+(defun kb-debug-profile-end (operation)
+  "End profiling an operation and record statistics.
+OPERATION is the name of the operation being profiled."
+  (let ((start-time (gethash operation kb-debug-profile-data))
+        (end-time (float-time))
+        (duration (- end-time start-time)))
+    (when start-time
+      (let ((entry (gethash operation kb-debug-profile-data)))
+        (setf (kb-profile-entry-count entry) (1+ (kb-profile-entry-count entry)))
+        (setf (kb-profile-entry-total-time entry) (+ (kb-profile-entry-total-time entry) duration))
+        (setf (kb-profile-entry-avg-time entry) (/ (kb-profile-entry-total-time entry) (kb-profile-entry-count entry)))
+        (setf (kb-profile-entry-min-time entry) (min (kb-profile-entry-min-time entry) duration))
+        (setf (kb-profile-entry-max-time entry) (max (kb-profile-entry-max-time entry) duration)))))))
+
+;;;###autoload
+(defun kb-debug-show-profile ()
+  "Show profiling statistics."
+  (interactive)
+  (unless kb-debug-profile-data
+    (setq kb-debug-profile-data (make-hash-table :test 'equal)))
+  (with-output-to-temp-buffer "*KB Profile*"
+    (princ "KB Profiling Statistics:\n\n")
+    (maphash (lambda (op entry)
+                (princ (format "%s:\n" op))
+                (princ (format "  Calls: %d\n" (kb-profile-entry-count entry)))
+                (princ (format "  Total time: %.4f sec\n" (kb-profile-entry-total-time entry)))
+                (princ (format "  Avg time: %.4f sec\n" (kb-profile-entry-avg-time entry)))
+                (princ (format "  Min time: %.4f sec\n" (kb-profile-entry-min-time entry)))
+                (princ (format "  Max time: %.4f sec\n" (kb-profile-entry-max-time entry)))
+                (princ "\n"))
+              kb-debug-profile-data))
+    (help-mode)))
+
+;;;###autoload
+(defun kb-debug-clear-profile ()
+  "Clear profiling data."
+  (interactive)
+  (setq kb-debug-profile-data nil)
+  (message "Profile data cleared"))
+
+;;; Knowledge Base Inspection
+
+;;;###autoload
+(defun kb-debug-inspect-microtheory (mt-name)
+  "Inspect a microtheory in detail.
+MT-NAME is the name of the microtheory to inspect."
+  (interactive "sInspect microtheory: ")
+  (let ((mt (kb-get-microtheory mt-name)))
+    (unless mt
+      (error "Microtheory not found: %s" mt-name))
+    (with-output-to-temp-buffer (format "*KB Microtheory: %s*" mt-name)
+      (princ (format "Microtheory: %s\n" mt-name))
+      (princ (format "Priority: %s\n" (kb-microtheory-priority mt)))
+      (princ (format "Inheritance mode: %s\n" (kb-microtheory-inheritance-mode mt)))
+      (princ "\nParents:\n")
+      (dolist (parent (kb-microtheory-parent-mts mt))
+        (princ (format "  %s\n" parent)))
+      (princ "\nAncestors:\n")
+      (dolist (ancestor (kb-get-ancestors mt-name))
+        (princ (format "  %s\n" ancestor)))
+      (princ "\nFacts:\n")
+      (maphash (lambda (subject facts)
+                  (dolist (fact facts)
+                    (princ (format "  (%s %s %s)\n" 
+                                   subject 
+                                   (kb-fact-predicate fact)
+                                   (kb-fact-object fact))))
+                (kb-microtheory-facts mt))
+      (princ "\nRules:\n")
+      (dolist (rule (kb-microtheory-rules mt))
+        (princ (format "  %s\n" (kb-rule-name rule)))
+        (princ (format "    Premises: %s\n" (kb-rule-premises rule)))
+        (princ (format "    Conclusion: %s\n" (kb-rule-conclusion rule)))
+      (help-mode))))
+
+;;;###autoload
+(defun kb-debug-show-all-microtheories ()
+  "Show overview of all microtheories."
+  (interactive)
+  (with-output-to-temp-buffer "*KB Microtheories*"
+    (maphash (lambda (name mt)
+                (princ (format "%s (priority: %s, %d facts, %d rules)\n"
+                               name
+                               (kb-microtheory-priority mt)
+                               (hash-table-count (kb-microtheory-facts mt))
+                               (length (kb-microtheory-rules mt))))
+              kb-microtheories)
+    (help-mode)))
+
+;;; TMS Integration
+
+;;;###autoload
+(defun kb-debug-show-justifications (subject predicate)
+  "Show TMS justifications for a fact.
+SUBJECT and PREDICATE identify the fact."
+  (interactive "sSubject: \nsPredicate: ")
+  (when (boundp 'kb-tms-facts)
+    (let ((fact-key (kb-tms-fact-key subject predicate nil)))
+          (fact-record (gethash fact-key kb-tms-facts)))
+      (when fact-record
+        (let ((justifications (kb-fact-record-justifications fact-record)))
+          (if justifications
+              (with-output-to-temp-buffer "*KB Justifications*"
+                (princ (format "Justifications for (%s %s):\n\n" subject predicate))
+                (dolist (just (cl-remove-duplicates justifications))
+                  (princ (format "Type: %s\n" (car just)))
+                  (let ((just-type (car just)))
+                    (cond
+                     ((eq just-type :direct)
+                      (princ "  Source: Direct assertion\n"))
+                     ((eq just-type :derived)
+                      (let ((premises (kb-justification-premises just)))
+                        (princ "  Derived from premises:\n")
+                        (dolist (premise premises)
+                          (princ (format "    %s\n" premise)))))
+                     ((eq just-type :default)
+                      (princ (format "  Default rule: %s\n" (cadr just))))
+                     ((eq just-type :exception)
+                      (princ (format "  Exception to rule: %s\n" (cadr just))))))
+                  (princ "\n")))
+                (help-mode))
+            (message "No justifications found for (%s %s)" subject predicate)))))))
+
+;;; Debug Control
+
+;;;###autoload
 (defun kb-debug-enable ()
-  "Enable knowledge base debugging."
+  "Enable debugging."
   (interactive)
   (setq kb-debug-enabled t)
   (message "KB debugging enabled"))
 
+;;;###autoload
 (defun kb-debug-disable ()
-  "Disable knowledge base debugging."
+  "Disable debugging."
   (interactive)
   (setq kb-debug-enabled nil)
-  (setq kb-debug-current-session nil)
   (message "KB debugging disabled"))
 
-(defun kb-debug-start-session (query &optional mt)
-  "Start a new debugging session."
-  (when kb-debug-enabled
-    (let* ((session-id (format "debug-%d" (cl-incf kb-debug-session-counter)))
-           (session (kb-debug-session-create
-                    :id session-id
-                    :start-time (current-time)
-                    :query query
-                    :microtheory (or mt kb-current-mt)
-                    :traces nil
-                    :status :running)))
-      (setq kb-debug-current-session session)
-      (puthash session-id session kb-debug-sessions)
-      
-      ;; Clean up old sessions if we have too many
-      (when (> (hash-table-count kb-debug-sessions) kb-debug-max-sessions)
-        (kb-debug-cleanup-old-sessions))
-      
-      session-id)))
-
-(defun kb-debug-end-session (result)
-  "End the current debugging session."
-  (when (and kb-debug-enabled kb-debug-current-session)
-    (setf (kb-debug-session-final-result kb-debug-current-session) result)
-    (setf (kb-debug-session-status kb-debug-current-session) :completed)
-    (setf (kb-debug-session-total-duration kb-debug-current-session)
-          (float-time (time-subtract (current-time) 
-                                    (kb-debug-session-start-time kb-debug-current-session))))
-    (let ((session-id (kb-debug-session-id kb-debug-current-session)))
-      (setq kb-debug-current-session nil)
-      session-id)))
-
-(defun kb-debug-trace (operation input output &optional worker justification)
-  "Add a trace step to the current debugging session."
-  (when (and kb-debug-enabled kb-debug-current-session)
-    (let* ((step-num (1+ (length (kb-debug-session-traces kb-debug-current-session))))
-           (trace (kb-debug-trace-create
-                  :step-number step-num
-                  :operation operation
-                  :input input
-                  :output output
-                  :worker worker
-                  :microtheory (kb-debug-session-microtheory kb-debug-current-session)
-                  :justification justification
-                  :timestamp (current-time))))
-      (push trace (kb-debug-session-traces kb-debug-current-session)))))
-
-(defun kb-debug-cleanup-old-sessions ()
-  "Remove old debug sessions to free memory."
-  (let ((sessions-to-remove nil))
-    (maphash (lambda (id session)
-               (push (cons (kb-debug-session-start-time session) id) sessions-to-remove))
-             kb-debug-sessions)
-    
-    ;; Sort by time and remove oldest
-    (setq sessions-to-remove (sort sessions-to-remove 
-                                  (lambda (a b) (time-less-p (car a) (car b)))))
-    
-    (let ((to-remove (- (hash-table-count kb-debug-sessions) kb-debug-max-sessions)))
-      (dotimes (i to-remove)
-        (remhash (cdar sessions-to-remove) kb-debug-sessions)
-        (setq sessions-to-remove (cdr sessions-to-remove))))))
-
-;;; Enhanced Query Functions with Debugging
-
-(defun kb-debug-query (subject predicate &optional mt)
-  "Query with debugging enabled."
-  (if kb-debug-enabled
-      (let ((session-id (kb-debug-start-session `(,subject ,predicate) mt)))
-        (kb-debug-trace :query `(,subject ,predicate) nil)
-        (let ((result (kb-query-with-inheritance subject predicate mt)))
-          (kb-debug-trace :query-result `(,subject ,predicate) result)
-          (kb-debug-end-session result)
-          result))
-    (kb-query-with-inheritance subject predicate mt)))
-
-(defun kb-debug-inference (query &optional mt timeout)
-  "Run inference with debugging."
-  (if kb-debug-enabled
-      (let ((session-id (kb-debug-start-session query mt)))
-        (kb-debug-trace :inference-start query nil)
-        (let ((result (kb-inference-strategist query mt timeout)))
-          (kb-debug-trace :inference-complete query result)
-          (kb-debug-end-session result)
-          result))
-    (kb-inference-strategist query mt timeout)))
-
-;;; Debugging Display Functions
-
-(defun kb-debug-show-session (session-id)
-  "Show details of a debugging session."
-  (interactive (list (completing-read "Session ID: " 
-                                     (kb-debug-list-session-ids))))
-  (let ((session (gethash session-id kb-debug-sessions)))
-    (if session
-        (kb-debug-display-session session)
-      (message "Debug session %s not found" session-id))))
-
-(defun kb-debug-list-session-ids ()
-  "Get list of all debug session IDs."
-  (let ((ids nil))
-    (maphash (lambda (id session) (push id ids)) kb-debug-sessions)
-    (sort ids #'string<)))
-
-(defun kb-debug-display-session (session)
-  "Display a debug session in a buffer."
-  (let ((buffer-name (format "*KB Debug: %s*" (kb-debug-session-id session))))
-    (with-current-buffer (get-buffer-create buffer-name)
-      (erase-buffer)
-      (insert (format "=== Knowledge Base Debug Session ===\n"))
-      (insert (format "Session ID: %s\n" (kb-debug-session-id session)))
-      (insert (format "Query: %s\n" (kb-debug-session-query session)))
-      (insert (format "Microtheory: %s\n" (kb-debug-session-microtheory session)))
-      (insert (format "Status: %s\n" (kb-debug-session-status session)))
-      (insert (format "Duration: %.4f seconds\n" (kb-debug-session-total-duration session)))
-      (insert (format "Steps: %d\n\n" (length (kb-debug-session-traces session))))
-      
-      (insert "=== Trace Steps ===\n")
-      (dolist (trace (reverse (kb-debug-session-traces session)))
-        (insert (format "Step %d: %s\n" 
-                       (kb-debug-trace-step-number trace)
-                       (kb-debug-trace-operation trace)))
-        (insert (format "  Input: %s\n" (kb-debug-trace-input trace)))
-        (insert (format "  Output: %s\n" (kb-debug-trace-output trace)))
-        (when (kb-debug-trace-worker trace)
-          (insert (format "  Worker: %s\n" (kb-debug-trace-worker trace))))
-        (when (kb-debug-trace-justification trace)
-          (insert (format "  Justification: %s\n" (kb-debug-trace-justification trace))))
-        (insert "\n"))
-      
-      (insert (format "\n=== Final Result ===\n"))
-      (insert (format "%s\n" (kb-debug-session-final-result session)))
-      
-      (goto-char (point-min))
-      (pop-to-buffer (current-buffer)))))
-
-;;; Knowledge Base Validation
-
-(defun kb-validate-microtheory (mt-name)
-  "Validate consistency of a microtheory."
-  (interactive (list (completing-read "Microtheory: " 
-                                     (kb-list-microtheories))))
-  (let ((mt (kb-get-microtheory (intern mt-name)))
-        (inconsistencies nil)
-        (warnings nil))
-    
-    (when mt
-      ;; Check for contradictory facts
-      (maphash 
-       (lambda (subject facts)
-         (let ((predicates (make-hash-table :test 'equal)))
-           (dolist (fact facts)
-             (let ((pred (kb-fact-predicate fact))
-                   (obj (kb-fact-object fact)))
-               (when (gethash pred predicates)
-                 (unless (equal obj (gethash pred predicates))
-                   (push (format "Contradiction: %s %s has values %s and %s"
-                                subject pred obj (gethash pred predicates))
-                         inconsistencies)))
-               (puthash pred obj predicates)))))
-       (kb-microtheory-facts mt))
-      
-      ;; Check for circular inheritance
-      (let ((visited (make-hash-table :test 'equal)))
-        (kb-check-circular-inheritance mt-name visited))
-      
-      ;; Display results
-      (let ((buffer-name (format "*KB Validation: %s*" mt-name)))
-        (with-current-buffer (get-buffer-create buffer-name)
-          (erase-buffer)
-          (insert (format "=== Validation Report for %s ===\n\n" mt-name))
-          
-          (if inconsistencies
-              (progn
-                (insert "INCONSISTENCIES FOUND:\n")
-                (dolist (inc inconsistencies)
-                  (insert (format "- %s\n" inc))))
-            (insert "✓ No inconsistencies found\n"))
-          
-          (when warnings
-            (insert "\nWARNINGS:\n")
-            (dolist (warn warnings)
-              (insert (format "- %s\n" warn))))
-          
-          (insert (format "\nFacts count: %d\n" 
-                         (kb-count-facts-in-mt mt)))
-          (insert (format "Rules count: %d\n" 
-                         (length (kb-microtheory-rules mt))))
-          
-          (goto-char (point-min))
-          (pop-to-buffer (current-buffer)))))))
-
-(defun kb-count-facts-in-mt (mt)
-  "Count total facts in a microtheory."
-  (let ((count 0))
-    (maphash (lambda (subject facts)
-               (setq count (+ count (length facts))))
-             (kb-microtheory-facts mt))
-    count))
-
-(defun kb-check-circular-inheritance (mt-name visited)
-  "Check for circular inheritance in microtheory hierarchy."
-  (when (gethash mt-name visited)
-    (error "Circular inheritance detected involving %s" mt-name))
-  
-  (puthash mt-name t visited)
-  
-  (let ((mt (kb-get-microtheory mt-name)))
-    (when mt
-      (dolist (parent (kb-microtheory-parent-mts mt))
-        (kb-check-circular-inheritance parent visited))))
-  
-  (remhash mt-name visited))
-
-;;; Interactive Debugging Commands
+;;;###autoload
+(defun kb-debug-set-trace-level (level)
+  "Set the debug trace level.
+LEVEL should be 0 (off), 1 (basic), 2 (detailed), or 3 (verbose)."
+  (interactive "nTrace level (0-3): ")
+  (if (and (integerp level) (<= 0 level 3))
+      (progn
+        (setq kb-debug-trace-level level)
+        (message "Debug trace level set to %d" level))
+    (error "Invalid trace level: %s (must be 0-3)" level)))
 
 ;;;###autoload
-(defun kb-debug-last-query ()
-  "Show debug information for the last query."
+(defun kb-debug-show-config ()
+  "Show current debug configuration."
   (interactive)
-  (if kb-debug-current-session
-      (kb-debug-display-session kb-debug-current-session)
-    (let ((sessions (kb-debug-list-session-ids)))
-      (if sessions
-          (kb-debug-show-session (car (sort sessions #'string>)))
-        (message "No debug sessions found")))))
-
-;;;###autoload
-(defun kb-debug-clear-sessions ()
-  "Clear all debug sessions."
-  (interactive)
-  (clrhash kb-debug-sessions)
-  (setq kb-debug-current-session nil)
-  (setq kb-debug-session-counter 0)
-  (message "All debug sessions cleared"))
-
-;;;###autoload
-(defun kb-debug-stats ()
-  "Show debugging statistics."
-  (interactive)
-  (message "Debug sessions: %d, Enabled: %s, Current session: %s"
-           (hash-table-count kb-debug-sessions)
-           kb-debug-enabled
-           (if kb-debug-current-session 
-               (kb-debug-session-id kb-debug-current-session)
-             "none")))
-
-;;; Visualization Functions
-
-(defun kb-visualize-microtheory (mt-name &optional max-facts)
-  "Create a simple text visualization of a microtheory."
-  (interactive (list (completing-read "Microtheory: " 
-                                     (kb-list-microtheories))
-                     current-prefix-arg))
-  (let ((mt (kb-get-microtheory (intern mt-name)))
-        (max-facts (or max-facts 50)))
-    
-    (when mt
-      (let ((buffer-name (format "*KB Visualization: %s*" mt-name)))
-        (with-current-buffer (get-buffer-create buffer-name)
-          (erase-buffer)
-          (insert (format "=== Microtheory: %s ===\n\n" mt-name))
-          
-          ;; Show inheritance
-          (when (kb-microtheory-parent-mts mt)
-            (insert "Inherits from: ")
-            (insert (mapconcat #'symbol-name (kb-microtheory-parent-mts mt) ", "))
-            (insert "\n\n"))
-          
-          ;; Show facts
-          (insert "Facts:\n")
-          (let ((fact-count 0))
-            (catch 'max-reached
-              (maphash 
-               (lambda (subject facts)
-                 (dolist (fact facts)
-                   (when (>= fact-count max-facts)
-                     (insert (format "... (%d more facts)\n" 
-                                    (- (kb-count-facts-in-mt mt) max-facts)))
-                     (throw 'max-reached nil))
-                   (insert (format "  %s %s %s (%.2f)\n"
-                                  (kb-fact-subject fact)
-                                  (kb-fact-predicate fact)
-                                  (kb-fact-object fact)
-                                  (kb-fact-certainty fact)))
-                   (cl-incf fact-count)))
-               (kb-microtheory-facts mt))))
-          
-          ;; Show rules
-          (when (kb-microtheory-rules mt)
-            (insert "\nRules:\n")
-            (dolist (rule (kb-microtheory-rules mt))
-              (insert (format "  %s: %s => %s\n"
-                             (kb-rule-name rule)
-                             (kb-rule-premises rule)
-                             (kb-rule-conclusion rule)))))
-          
-          (goto-char (point-min))
-          (pop-to-buffer (current-buffer)))))))
+  (message "KB Debug Configuration:")
+  (message "  Enabled: %s" kb-debug-enabled)
+  (message "  Trace level: %d" kb-debug-trace-level)
+  (message "  Max log size: %d" kb-debug-log-max-size)
+  (message "  Log entries: %d" (length kb-debug-log))
+  (message "  Profiled operations: %d" (hash-table-count kb-debug-profile-data)))
 
 (provide 'kb-debugger)
 ;;; kb-debugger.el ends here

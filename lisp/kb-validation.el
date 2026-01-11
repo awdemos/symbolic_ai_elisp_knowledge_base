@@ -1,4 +1,5 @@
 ;;; kb-validation.el --- Robust Error Handling and Validation for Knowledge Base System
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, validation, error handling
@@ -9,7 +10,7 @@
 ;; This package provides comprehensive input validation, error handling,
 ;; and recovery mechanisms for the Knowledge Base system. It includes:
 ;; - Input validation for all major functions
-;; - Microtheory validation and format checking  
+;; - Microtheory validation and format checking
 ;; - Fact and rule validation with type checking
 ;; - Event validation for temporal facts
 ;; - Error recovery mechanisms with graceful degradation
@@ -123,10 +124,10 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
 (defun kb-validate-microtheory-parents (parent-mts)
   "Validate PARENT-MTS is a valid list of parent microtheories."
   (when parent-mts
-    (kb-validate-list parent-mts)
+    (kb-validate-list parent-mts nil 1 100)
     (dolist (parent parent-mts)
       (kb-validate-microtheory-name parent)
-      (kb-validate-microtheory-exists parent t)))
+      (kb-validate-microtheory-exists parent t))))
   t)
 
 (defun kb-validate-inheritance-mode (mode)
@@ -200,12 +201,8 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
   (unless name
     (signal 'kb-rule-error '("Rule name cannot be nil")))
   
-  (kb-validate-symbol name)
-  
-  (let ((name-str (symbol-name name)))
-    (when (> (length name-str) 100)
-      (signal 'kb-rule-error (list "Rule name too long (max 100 characters)" name))))
-  
+  (unless (symbolp name)
+    (signal 'kb-rule-error (list "Rule name must be a symbol" name)))
   t)
 
 (defun kb-validate-rule-premises-structure (premises)
@@ -235,56 +232,88 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
   
   (when (< (length conclusion) 2)
     (signal 'kb-rule-error (list "Rule conclusion too short" conclusion)))
-  
   t)
 
 (defun kb-validate-rule-priority (priority)
-  "Validate rule PRIORITY value."
+  "Validate rule PRIORITY."
   (when priority
-    (kb-validate-number priority nil 0.0 10.0))
+    (kb-validate-number priority nil 0.0 1000.0))
+  t)
+
+(defun kb-validate-rule-temporal-p (temporal-p)
+  "Validate rule TEMPORAL-P."
+  (when (and temporal-p (not (null temporal-p)))
+    (unless (booleanp temporal-p)
+      (signal 'kb-type-error (list "Rule temporal-p must be boolean or nil" temporal-p)))
+    t)
+  t)
+
+(defun kb-validate-rule-params (name premises conclusion &optional priority temporal-p mt)
+  "Validate parameters for creating a rule."
+  (kb-validate-rule-name name)
+  (kb-validate-rule-premises-structure premises)
+  (kb-validate-rule-conclusion conclusion)
+  (kb-validate-rule-priority priority)
+  (kb-validate-rule-temporal-p temporal-p)
+  (when mt
+    (kb-validate-microtheory-name mt)
+    (kb-validate-microtheory-exists mt t))
+  t)
+
+(defun kb-validate-create-microtheory-params (name &optional parent-mts priority inheritance-mode)
+  "Validate parameters for kb-create-microtheory function."
+  (kb-validate-microtheory-name name)
+  (kb-validate-microtheory-parents parent-mts)
+  (kb-validate-microtheory-priority priority)
+  (kb-validate-inheritance-mode inheritance-mode)
   t)
 
 ;;; Event Validation
 
 (defun kb-validate-event-type (event-type)
-  "Validate EVENT-TYPE is valid."
-  (kb-validate-symbol event-type)
-  
-  ;; Check against known event types if available
-  (when (and (boundp 'kb-event-types) kb-event-types)
-    (unless (member event-type kb-event-types)
-      (signal 'kb-event-error 
-              (list "Unknown event type (consider adding to kb-event-types)" event-type))))
-  
+  "Validate event EVENT-TYPE."
+  (kb-validate-symbol event-type nil)
   t)
 
 (defun kb-validate-event-participants (participants)
-  "Validate event PARTICIPANTS list."
-  (when participants
-    (kb-validate-list participants)
-    (dolist (participant participants)
-      (kb-validate-symbol participant)))
+  "Validate event PARTICIPANTS."
+  (kb-validate-list participants nil 1 100)
   t)
 
 (defun kb-validate-event-time (time time-type)
-  "Validate event TIME value of TIME-TYPE (start-time, end-time, etc.)."
-  (when time
-    ;; Accept various time formats
-    (unless (or (numberp time)
-                (stringp time)
-                (and (listp time) (= (length time) 3))) ; (year month day)
-      (signal 'kb-temporal-error 
-              (list (format "Invalid %s format" time-type) time))))
+  "Validate event TIME based on TIME-TYPE (:start, :end, :duration)."
+  (when (and time (not (or (stringp time) (numberp time) (listp time)))
+    (signal 'kb-type-error (list "Event time must be string, number, or list" time)))
+  (when (and (eq time-type :duration) (or (listp time) (numberp time))
+    (signal 'kb-type-error (list "Duration must be a positive number" time)))
   t)
 
 (defun kb-validate-event-duration (duration)
   "Validate event DURATION."
-  (when duration
-    (unless (and (numberp duration) (> duration 0))
-      (signal 'kb-temporal-error (list "Duration must be positive number" duration))))
+  (when (and duration (or (not (numberp duration)) (< duration 0)))
+    (signal 'kb-type-error (list "Duration must be a positive number" duration))
   t)
 
-;;; High-Level Validation Functions
+(defun kb-validate-event-params (event-type &rest properties)
+  "Validate event parameters."
+  (kb-validate-event-type event-type)
+  (dolist (prop properties)
+    (let ((prop-type (car prop))
+          (prop-value (cdr prop)))
+      (cond
+       ((eq prop-type :participants)
+        (kb-validate-event-participants prop-value))
+       ((eq prop-type :location)
+        (kb-validate-symbol prop-value t))
+       ((eq prop-type :start-time)
+        (kb-validate-event-time prop-value :start))
+       ((eq prop-type :end-time)
+        (kb-validate-event-time prop-value :end))
+       ((eq prop-type :duration)
+        (kb-validate-event-duration prop-value))))))
+  t)
+
+;;; Function Parameter Validation
 
 (defun kb-validate-assert-params (subject predicate object &optional certainty temporal-info mt)
   "Validate parameters for kb-assert function."
@@ -298,10 +327,8 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
 
 (defun kb-validate-query-params (subject predicate &optional mt)
   "Validate parameters for kb-query function."
-  (when subject
-    (kb-validate-fact-component subject "subject"))
-  (when predicate  
-    (kb-validate-fact-component predicate "predicate"))
+  (kb-validate-symbol subject t)
+  (kb-validate-symbol predicate t)
   (when mt
     (kb-validate-microtheory-name mt)
     (kb-validate-microtheory-exists mt t))
@@ -315,199 +342,142 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
     (kb-validate-microtheory-exists mt t))
   t)
 
-(defun kb-validate-rule-params (name premises conclusion &optional priority temporal-p mt)
-  "Validate parameters for creating a rule."
-  (kb-validate-rule-name name)
-  (kb-validate-rule-premises-structure premises)
-  (kb-validate-rule-conclusion conclusion)
-  (kb-validate-rule-priority priority)
-  (when mt
-    (kb-validate-microtheory-name mt)
-    (kb-validate-microtheory-exists mt t))
-  t)
+;;; Macro and Helper Functions
 
-(defun kb-validate-create-microtheory-params (name &optional parent-mts priority inheritance-mode)
-  "Validate parameters for kb-create-microtheory function."
-  (kb-validate-microtheory-name name)
-  (kb-validate-microtheory-exists name nil) ; should not exist
-  (kb-validate-microtheory-parents parent-mts)
-  (kb-validate-microtheory-priority priority)
-  (kb-validate-inheritance-mode inheritance-mode)
-  t)
+(defmacro kb-with-validation (function-name params &rest body)
+  "Execute BODY with validation enabled.
+FUNCTION-NAME is the name of the function being validated.
+PARAMS are the parameters to validate.
+BODY is the code to execute if validation passes."
+  `(let ((validation-result
+          (when kb-validation-enabled
+            (condition-case err
+                (progn ,@body)
+              (kb-validation-error 
+               (kb-validation-error-handler (car err) (cdr err)))))))
+     (or validation-result
+         (signal 'kb-validation-error
+                 (list "Validation failed for function" ',function-name)))))
 
-(defun kb-validate-event-params (event-type &rest properties)
-  "Validate parameters for kb-create-event function."
-  (kb-validate-event-type event-type)
-  
-  (let ((participants (plist-get properties :participants))
-        (start-time (plist-get properties :start-time))
-        (end-time (plist-get properties :end-time))
-        (duration (plist-get properties :duration)))
+(defun kb-validation-error-handler (error-type error-data)
+  "Handle validation errors with user-friendly messages and suggestions."
+  (let ((error-msg (car error-data))
+         (error-value (cadr error-data))
+         (suggestion nil))
     
-    (kb-validate-event-participants participants)
-    (kb-validate-event-time start-time "start-time")
-    (kb-validate-event-time end-time "end-time")
-    (kb-validate-event-duration duration)
+    ;; Generate suggestions based on error type
+    (setq suggestion
+          (cond
+           ((string-match "not exist" error-msg)
+            (format "Try creating the %s first with (kb-create-microtheory %s)"
+                    (if (string-match "microtheory" error-msg) "microtheory" "item")))
+           ((string-match "cannot be nil" error-msg)
+            "Provide a valid value")
+           ((string-match "invalid" error-msg)
+            "Check the documentation for valid parameter formats")
+           (t
+            nil)))
     
-    ;; Validate temporal consistency
-    (when (and start-time end-time duration)
-      (when kb-validation-strict-mode
-        (signal 'kb-temporal-error 
-                '("Cannot specify both end-time and duration with start-time")))))
-  
-  t)
-
-;;; Error Recovery and Suggestions
-
-(defun kb-suggest-correction (error-data)
-  "Suggest corrections based on ERROR-DATA."
-  (let ((error-type (car error-data))
-        (error-value (cadr error-data)))
-    (cond
-     ((string-match "does not exist" error-type)
-      (format "Try creating the microtheory first with (kb-create-microtheory %s)" error-value))
-     
-     ((string-match "already exists" error-type)
-      (format "Try using a different name or use (kb-get-microtheory %s) to retrieve existing" error-value))
-     
-     ((string-match "cannot be nil" error-type)
-      "Provide a valid value (non-nil)")
-     
-     ((string-match "must be a symbol" error-type)
-      "Use a symbol like 'my-symbol instead of a string")
-     
-     ((string-match "Invalid.*mode" error-type)
-      "Use one of: 'strict, 'override, or 'merge")
-     
-     (t "Check the documentation for valid parameter formats"))))
-
-(defun kb-validation-error-handler (error-symbol error-data)
-  "Handle validation errors with helpful messages."
-  (let ((suggestion (kb-suggest-correction error-data)))
-    (message "KB Validation Error: %s\nSuggestion: %s" 
-             (error-message-string (list error-symbol error-data))
-             suggestion)
-    ;; Return nil to indicate error was handled
-    nil))
-
-;;; Validation Wrapper Macros
-
-(defmacro kb-with-validation (func-name params &rest body)
-  "Execute BODY with validation for FUNC-NAME using PARAMS."
-  `(if kb-validation-enabled
-       (condition-case err
-           (progn
-             ,(pcase func-name
-                ('kb-assert `(apply #'kb-validate-assert-params ,params))
-                ('kb-query `(apply #'kb-validate-query-params ,params))
-                ('kb-retract `(apply #'kb-validate-retract-params ,params))
-                ('kb-add-rule `(apply #'kb-validate-rule-params ,params))
-                ('kb-create-microtheory `(apply #'kb-validate-create-microtheory-params ,params))
-                ('kb-create-event `(apply #'kb-validate-event-params ,params)))
-             ,@body)
-         (kb-validation-error
-          (kb-validation-error-handler (car err) (cdr err))))
-     (progn ,@body)))
+    ;; Print error message with suggestion
+    (message "KB Validation Error: %s" error-msg)
+    (message "Suggestion: %s" suggestion)
+    
+    ;; Return a clean error
+    (signal 'kb-validation-error (list error-msg error-value suggestion))))
 
 (defmacro kb-with-error-recovery (&rest body)
-  "Execute BODY with comprehensive error recovery."
+  "Execute BODY with error recovery.
+If an error occurs, log it and return a sensible default."
   `(condition-case err
        (progn ,@body)
-     (kb-validation-error
-      (kb-validation-error-handler (car err) (cdr err)))
-     (error
-      (message "KB System Error: %s\nOperation failed gracefully." 
-               (error-message-string err))
+     (error 
+      (message "KB System Error: %s\nOperation failed gracefully." (error-message-string err))
       nil)))
 
-;;; User-Accessible Validation Functions
+;;; System Validation
 
 (defun kb-validate-system ()
-  "Validate the current state of the KB system."
-  (interactive)
-  (condition-case err
-      (progn
-        (message "Validating KB system...")
-        
-        ;; Check microtheories
-        (when (boundp 'kb-microtheories)
-          (maphash (lambda (name mt)
-                     (kb-validate-microtheory-name name)
-                     (when (kb-microtheory-parent-mts mt)
-                       (kb-validate-microtheory-parents 
-                        (kb-microtheory-parent-mts mt))))
-                   kb-microtheories))
-        
-        ;; Check current microtheory
-        (when (boundp 'kb-current-mt)
-          (kb-validate-microtheory-name kb-current-mt)
-          (kb-validate-microtheory-exists kb-current-mt t))
-        
-        (message "KB system validation completed successfully."))
-    (error
-     (message "KB system validation failed: %s" (error-message-string err)))))
+  "Validate consistency of the entire KB system."
+  (let ((errors nil)
+        (validation-depth 0))
+    
+    ;; Check microtheory hierarchy
+    (when (boundp 'kb-microtheories)
+      (maphash (lambda (name mt)
+                 (let ((validation-depth (+ validation-depth 1)))
+                   (when (> validation-depth kb-validation-max-recursion-depth)
+                     (signal 'kb-validation-error 
+                             (list "Maximum recursion depth exceeded")))
+                   (kb-validate-microtheory-name name)
+                   (kb-validate-microtheory-parents (kb-microtheory-parent-mts mt))))
+               kb-microtheories)))
+    
+    ;; Check for circular inheritance
+    (when (boundp 'kb-microtheories)
+      (maphash (lambda (name mt)
+                 (kb-validate-inheritance-cycle name (kb-microtheory-parent-mts mt)))
+               kb-microtheories))
+    
+    (if errors
+        (progn
+          (message "KB System validation found %d errors:" (length errors))
+          (dolist (error errors)
+            (message "  %s" error)))
+          nil)
+      (message "KB System validation passed")
+      t)))
 
+;;; User-Facing Validation Functions
+
+;;;###autoload
 (defun kb-check-fact (subject predicate object)
   "Check if a fact is valid without asserting it."
-  (interactive "sSubject: \nsPredicate: \nsObject: ")
-  (condition-case err
-      (progn
-        (kb-validate-fact-structure subject predicate object)
-        (message "Fact (%s %s %s) is valid" subject predicate object)
-        t)
-    (kb-validation-error
-     (message "Invalid fact: %s" (error-message-string err))
-     nil)))
+Returns t if valid, signals error otherwise."
+  (interactive "sCheck fact (s p o): ")
+  (kb-validate-fact-structure subject predicate object)
+  (message "Fact is valid: (%s %s %s)" subject predicate object))
 
-(defun kb-check-microtheory (name)
-  "Check if a microtheory name is valid."
-  (interactive "sMicrotheory name: ")
-  (condition-case err
-      (progn
-        (kb-validate-microtheory-name name)
-        (message "Microtheory name '%s' is valid" name)
-        t)
-    (kb-validation-error
-     (message "Invalid microtheory name: %s" (error-message-string err))
-     nil)))
+;;;###autoload
+(defun kb-check-rule (name premises conclusion)
+  "Check if a rule is valid without adding it.
+Returns t if valid, signals error otherwise."
+  (interactive "sCheck rule\nName: \sPremises: \nConclusion: ")
+  (kb-validate-rule-params name premises conclusion)
+  (message "Rule is valid: %s" name))
 
+;;;###autoload
+(defun kb-check-microtheory (name parent-mts)
+  "Check if a microtheory is valid without creating it.
+Returns t if valid, signals error otherwise."
+  (interactive "sCheck microtheory\nName: \sParents: ")
+  (kb-validate-create-microtheory-params name parent-mts)
+  (message "Microtheory is valid: %s" name))
+
+;;; Validation Control
+
+;;;###autoload
+(defun kb-validation-toggle ()
+  "Toggle validation on/off."
+  (interactive)
+  (setq kb-validation-enabled (not kb-validation-enabled))
+  (message "Validation %s" (if kb-validation-enabled "enabled" "disabled")))
+
+;;;###autoload
 (defun kb-validation-toggle-strict-mode ()
   "Toggle strict validation mode."
   (interactive)
   (setq kb-validation-strict-mode (not kb-validation-strict-mode))
-  (message "KB validation strict mode: %s" 
-           (if kb-validation-strict-mode "ENABLED" "DISABLED")))
+  (message "Strict mode %s" (if kb-validation-strict-mode "enabled" "disabled")))
 
-(defun kb-validation-enable ()
-  "Enable KB validation."
-  (interactive)
-  (setq kb-validation-enabled t)
-  (message "KB validation enabled"))
-
-(defun kb-validation-disable ()
-  "Disable KB validation (for performance)."
-  (interactive)
-  (setq kb-validation-enabled nil)
-  (message "KB validation disabled"))
-
-;;; Statistics and Debugging
-
-(defvar kb-validation-stats (make-hash-table :test 'eq)
-  "Statistics on validation calls.")
-
-(defun kb-validation-record-stat (func-name)
-  "Record statistics for validation of FUNC-NAME."
-  (let ((count (gethash func-name kb-validation-stats 0)))
-    (puthash func-name (1+ count) kb-validation-stats)))
-
+;;;###autoload
 (defun kb-validation-show-stats ()
   "Show validation statistics."
   (interactive)
   (message "KB Validation Statistics:")
-  (maphash (lambda (func count)
-             (message "  %s: %d calls validated" func count))
-           kb-validation-stats))
+  (message "  Validation enabled: %s" kb-validation-enabled)
+  (message "  Strict mode: %s" kb-validation-strict-mode)
+  (message "  Max recursion depth: %d" kb-validation-max-recursion-depth)
+  (message "  Current depth: %d" kb-validation-current-depth))
 
 (provide 'kb-validation)
-
 ;;; kb-validation.el ends here

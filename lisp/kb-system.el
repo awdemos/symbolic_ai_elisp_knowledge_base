@@ -1,4 +1,5 @@
 ;;; kb-system.el --- Knowledge Base System DSL (Legacy Interface)
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, ontology
@@ -7,165 +8,146 @@
 ;;; Commentary:
 
 ;; This package provides backward compatibility for the original knowledge base
-;; system. For new development, use kb-advanced-system.el which provides the full
-;; advanced functionality including microtheories, layered inference,
-;; non-monotonic reasoning, and event reification.
+;; system. For new development, use kb-advanced-system.el which provides
+;; the full interface including microtheories, layered inference, non-monotonic
+;; reasoning, temporal logic, event reification, debugging tools, query caching,
+;; testing framework, RDF/OWL import, and database persistence.
+
+;; The legacy interface supports a simple fact-query-assert API:
+;; - kb-system-assert: Add facts
+;; - kb-system-query: Query for facts
+;; - kb-system-add-rule: Add inference rules
+;; - kb-system-match-premises: Match rule premises
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'kb-advanced-system)
 
-;;; Custom Types
+;;; Structures
 
-(cl-defstruct (kb-fact (:constructor kb-fact-create)
-                       (:copier nil))
-  "A structure representing a fact in the knowledge base."
-  subject predicate object certainty)
+(cl-defstruct (kb-system-fact (:constructor kb-system-fact-create)
+                            (:copier nil))
+  subject
+  predicate
+  object)
 
-(cl-defstruct (kb-rule (:constructor kb-rule-create)
-                       (:copier nil))
-  "A structure representing an inference rule."
-  name premises conclusion)
+(cl-defstruct (kb-system-rule (:constructor kb-system-rule-create)
+                             (:copier nil))
+  name
+  premises
+  conclusion)
 
 ;;; Variables
 
-(defvar kb-system-knowledge-base (make-hash-table :test 'equal)
-  "The main knowledge base hash table.")
+(defvar kb-system-facts nil
+  "Hash table storing all facts in the system.
+Keys are (subject predicate) pairs, values are lists of objects.")
 
 (defvar kb-system-rules nil
-  "List of inference rules.")
+  "List of all inference rules in the system.")
 
-(defvar kb-system-ontology (make-hash-table :test 'equal)
-  "Ontology hash table for storing class hierarchies.")
+;;; API Functions
 
-;;; Core Functions
+;;;###autoload
+(defun kb-system-assert (subject predicate object)
+  "Assert a fact into the knowledge base.
+SUBJECT, PREDICATE and OBJECT define the fact to add."
+  (interactive "sAssert fact (s p o): ")
+  (unless kb-system-facts
+    (setq kb-system-facts (make-hash-table :test 'equal)))
+  (let ((key (cons subject predicate))
+        (facts (gethash key kb-system-facts)))
+    (puthash key (cons object facts) kb-system-facts)
+    (message "Asserted: (%s %s %s)" subject predicate object)))
 
-(defun kb-system-add-fact (subject predicate object &optional certainty)
-  "Add a fact to the knowledge base (legacy function)."
-  (with-kb
-    (kb-assert subject predicate object certainty)))
-
+;;;###autoload
 (defun kb-system-query (subject predicate)
-  "Query the knowledge base for facts matching the subject and predicate (legacy function)."
-  (with-kb
-    (kb-query subject predicate)))
+  "Query the knowledge base for facts matching SUBJECT and PREDICATE.
+Returns a list of all objects matching the query."
+  (interactive "sQuery facts (s p): ")
+  (when kb-system-facts
+    (let ((key (cons subject predicate)))
+      (gethash key kb-system-facts))))
 
+;;;###autoload
 (defun kb-system-add-rule (name premises conclusion)
-  "Add an inference rule to the system."
-  (let ((rule (kb-rule-create :name name
-                              :premises premises
-                              :conclusion conclusion)))
-    (push rule kb-system-rules)))
-
-(defun kb-system-infer ()
-  "Apply inference rules to derive new facts (legacy function)."
-  (with-kb
-    (kb-reason)))
+  "Add an inference rule to the system.
+NAME identifies the rule.
+PREMISES are the conditions that must hold.
+CONCLUSION is what can be inferred when premises are true."
+  (interactive "sAdd rule (s): \nNew rule name: ")
+  (push (kb-system-rule-create
+         :name name
+         :premises premises
+         :conclusion conclusion)
+        kb-system-rules)
+  (message "Added rule: %s" name))
 
 (defun kb-system-match-premises (premises)
-         "Match premises against the knowledge base, returning possible bindings."
-         (let ((bindings '()))
-           (dolist (premise premises)
-             (let* ((subject (car premise))
-                    (predicate (cadr premise))
-                    (results (kb-system-query subject predicate)))
-               (dolist (fact results)
-                 (push (list subject predicate (kb-fact-object fact)) bindings)))))
-         bindings)
+  "Match premises against knowledge in the base, returning possible bindings.
+PREMISES is a list of (subject predicate object) patterns or variables.
+Returns a list of binding lists, where each binding is a list of (variable . value) pairs."
+  (let ((bindings '(())))  ; Start with empty binding
+    (dolist (premise premises)
+      (let* ((subject (car premise))
+             (predicate (cadr premise))
+             (object (caddr premise))
+             (new-bindings '()))
+        ;; If premise has variables, try to match
+        (if (or (and (symbolp subject) (string-match-p "^?" (symbol-name subject)))
+                (and (symbolp predicate) (string-match-p "^?" (symbol-name predicate)))
+                (and (symbolp object) (string-match-p "^?" (symbol-name object)))
+            ;; Pattern matching with variables
+            (let* ((all-facts (when kb-system-facts
+                                   (kb-system-get-all-facts)))
+                   (variable-subject (if (and (symbolp subject) (string-match-p "^?" (symbol-name subject)))
+                                   subject
+                                 nil))
+                   (variable-predicate (if (and (symbolp predicate) (string-match-p "^?" (symbol-name predicate)))
+                                     predicate
+                                     nil))
+                   (variable-object (if (and (symbolp object) (string-match-p "^?" (symbol-name object)))
+                                   object
+                                    nil)))
+              ;; Try to bind variables to facts
+              (dolist (fact all-facts)
+                (let ((new-binding nil))
+                  ;; Check if fact matches pattern
+                  (when (or (not variable-subject)
+                              (equal (kb-system-fact-subject fact) variable-subject))
+                              (not variable-predicate)
+                              (equal (kb-system-fact-predicate fact) variable-predicate))
+                              (not variable-object)
+                              (equal (kb-system-fact-object fact) variable-object))
+                    (setq new-binding t))
+                  ;; Extend existing bindings
+                  (dolist (binding bindings)
+                    (when (every (lambda (var)
+                                    (let ((value (cdr (assq var binding))))
+                                      (or (null value)
+                                          (and (symbolp subject) (string-match-p "^?" (symbol-name subject))
+                                              (equal value variable-subject))
+                                          (and (symbolp predicate) (string-match-p "^?" (symbol-name predicate))
+                                              (equal value variable-predicate))
+                                          (and (symbolp object) (string-match-p "^?" (symbol-name object))
+                                              (equal value variable-object)))))
+                                  (list variable-subject variable-predicate variable-object))
+                              new-binding))
+                      (push (cons (cons variable-subject (cons variable-predicate variable-object)) binding) new-bindings))))
+              (setq bindings new-bindings)))
+          ;; Constant premise - no matching needed
+          bindings))
+    bindings))
 
-(defun kb-system-apply-bindings (conclusion bindings)
-  "Apply variable bindings to the conclusion of a rule.
-CONCLUSION is a list representing the conclusion with variables.
-BINDINGS is a list of pairs where each pair consists of a variable and its value."
-  (let ((result conclusion))
-    (dolist (binding bindings)
-      (let ((var (car binding))
-            (value (cadr binding)))
-        ;; Replace each occurrence of var in result with value
-        (setq result (mapcar (lambda (item)
-                               (if (eq item var) value item))
-                             result))))
-    result))
-
-;;; Ontology Functions
-
-(defun kb-system-add-class (class &optional parent)
-  "Add a class to the ontology, optionally specifying a parent class."
-  (let ((parents (if parent (list parent) nil)))
-    (puthash class parents kb-system-ontology)))
-
-(defun kb-system-add-subclass (subclass superclass)
-  "Add a subclass relationship to the ontology."
-  (let ((parents (gethash subclass kb-system-ontology)))
-    (puthash subclass (cons superclass parents) kb-system-ontology)))
-
-(defun kb-system-is-a (subclass superclass)
-  "Check if subclass is a descendant of superclass in the ontology."
-  (or (eq subclass superclass)
-      (let ((parents (gethash subclass kb-system-ontology)))
-        (cl-some (lambda (parent) (kb-system-is-a parent superclass)) parents))))
-
-;;; Query Language
-
-(defmacro kb-system-with-query (&rest body)
-  "Provide a DSL for querying the knowledge base."
-  `(let ((result nil))
-     ,@(mapcar (lambda (expr)
-                 (pcase expr
-                   (`(select ,subject ,predicate)
-                    `(setq result (kb-system-query ',subject ',predicate)))
-                   (`(where ,condition)
-                    `(setq result (cl-remove-if-not (lambda (fact) ,condition) result)))
-                   (`(order-by ,key)
-                    `(setq result (sort result (lambda (a b) (< (,key a) (,key b))))))))
-               body)
-     result))
-
-;;; Utility Functions
-
-(defun kb-system-print-kb ()
-  "Print the entire knowledge base."
-  (maphash (lambda (k v)
-             (princ (format "Subject: %s\n" k))
-             (dolist (fact v)
-               (princ (format "  %s\n" (kb-fact-object fact)))))
-           kb-system-knowledge-base))
-
-(defun kb-system-save-kb (filename)
-  "Save the knowledge base to a file."
-  (with-temp-file filename
-    (prin1 kb-system-knowledge-base (current-buffer))))
-
-(defun kb-system-load-kb (filename)
-  "Load the knowledge base from a file."
-  (setq kb-system-knowledge-base
-        (with-temp-buffer
-          (insert-file-contents filename)
-          (read (current-buffer)))))
-
-;;; Legacy Compatibility Notice
-
-;; The following example usage is preserved for backward compatibility.
-;; For new projects, please use the enhanced kb-advanced-system.el API.
-
-;;; Example Usage (Legacy - use kb-demo for new examples)
-
-;; (kb-system-add-class 'animal)
-;; (kb-system-add-class 'mammal 'animal)
-;; (kb-system-add-class 'human 'mammal)
-
-;; (kb-system-add-fact 'Socrates 'is-a 'human)
-;; (kb-system-add-fact 'human 'is-mortal t)
-
-;; (kb-system-add-rule 'mortality-rule
-;;                     '(((?x is-a ?y) (?y is-mortal t)))
-;;                     '(?x is-mortal t))
-
-;; (kb-system-infer)
-
-;; For enhanced queries, use: (kb-demo)
+(defun kb-system-get-all-facts ()
+  "Get all facts from the knowledge base."
+  (let ((all-facts nil))
+    (when kb-system-facts
+      (maphash (lambda (key facts)
+                  (dolist (fact facts)
+                    (push fact all-facts)))
+                kb-system-facts))
+    (nreverse all-facts)))
 
 (provide 'kb-system)
 ;;; kb-system.el ends here
-
