@@ -1,4 +1,5 @@
 ;;; kb-persistence.el --- Persistent Storage System for KB
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, persistence, storage

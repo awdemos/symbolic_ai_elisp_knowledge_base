@@ -1,5 +1,7 @@
-;;; Generated Knowledge Base Facts
-;;; Generated on: 2025-09-03T03:14:04.931891
+;;; test_generated_facts.el --- Generated Knowledge Base Facts
+;; -*- lexical-binding: t; -*-
+
+;; Generated on: 2025-09-03T03:14:04.931891
 ;;; Simple pattern-based fact extraction
 
 (require 'kb-advanced-system)

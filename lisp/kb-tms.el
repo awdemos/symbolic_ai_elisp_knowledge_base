@@ -1,4 +1,5 @@
 ;;; kb-tms.el --- Truth Maintenance System for KB
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, knowledge base, reasoning, tms

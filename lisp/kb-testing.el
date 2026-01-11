@@ -1,4 +1,5 @@
 ;;; kb-testing.el --- Testing Framework for Knowledge Base System
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, testing, validation, framework

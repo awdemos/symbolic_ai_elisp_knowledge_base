@@ -1,4 +1,5 @@
 ;;; kb-cache.el --- Query Caching System for Knowledge Base
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, caching, performance, optimization

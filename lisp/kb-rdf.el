@@ -1,4 +1,5 @@
 ;;; kb-rdf.el --- RDF/OWL Import and Export for Knowledge Base
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, rdf, owl, semantic web, import
