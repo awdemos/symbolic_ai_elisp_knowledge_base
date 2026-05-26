@@ -127,7 +127,7 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
     (kb-validate-list parent-mts nil 1 100)
     (dolist (parent parent-mts)
       (kb-validate-microtheory-name parent)
-      (kb-validate-microtheory-exists parent t))))
+      (kb-validate-microtheory-exists parent t)))
   t)
 
 (defun kb-validate-inheritance-mode (mode)
@@ -282,9 +282,9 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
 
 (defun kb-validate-event-time (time time-type)
   "Validate event TIME based on TIME-TYPE (:start, :end, :duration)."
-  (when (and time (not (or (stringp time) (numberp time) (listp time)))
+  (when (and time (not (or (stringp time) (numberp time) (listp time))))
     (signal 'kb-type-error (list "Event time must be string, number, or list" time)))
-  (when (and (eq time-type :duration) (or (listp time) (numberp time))
+  (when (and (eq time-type :duration) (or (listp time) (numberp time)))
     (signal 'kb-type-error (list "Duration must be a positive number" time)))
   t)
 
@@ -344,20 +344,23 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
 
 ;;; Macro and Helper Functions
 
+(message "About to define kb-with-validation macro")
+
 (defmacro kb-with-validation (function-name params &rest body)
   "Execute BODY with validation enabled.
 FUNCTION-NAME is the name of the function being validated.
 PARAMS are the parameters to validate.
-BODY is the code to execute if validation passes."
-  `(let ((validation-result
-          (when kb-validation-enabled
-            (condition-case err
-                (progn ,@body)
-              (kb-validation-error 
-               (kb-validation-error-handler (car err) (cdr err)))))))
-     (or validation-result
-         (signal 'kb-validation-error
-                 (list "Validation failed for function" ',function-name)))))
+BODY is the code to execute if validation passes.
+
+Looks up a validator function named kb-validate-<function-name>-params
+and calls it with PARAMS before executing BODY."
+  (message "Defining kb-with-validation macro")
+  `(progn
+     (when kb-validation-enabled
+       (let ((validator-fn (intern-soft (format "kb-validate-%s-params" ',function-name))))
+         (when validator-fn
+           (apply validator-fn ,params))))
+     ,@body))
 
 (defun kb-validation-error-handler (error-type error-data)
   "Handle validation errors with user-friendly messages and suggestions."
@@ -422,16 +425,16 @@ If an error occurs, log it and return a sensible default."
         (progn
           (message "KB System validation found %d errors:" (length errors))
           (dolist (error errors)
-            (message "  %s" error)))
+            (message "  %s" error))
           nil)
       (message "KB System validation passed")
-      t)))
+      t))
 
 ;;; User-Facing Validation Functions
 
 ;;;###autoload
 (defun kb-check-fact (subject predicate object)
-  "Check if a fact is valid without asserting it."
+  "Check if a fact is valid without asserting it.
 Returns t if valid, signals error otherwise."
   (interactive "sCheck fact (s p o): ")
   (kb-validate-fact-structure subject predicate object)
@@ -478,6 +481,8 @@ Returns t if valid, signals error otherwise."
   (message "  Strict mode: %s" kb-validation-strict-mode)
   (message "  Max recursion depth: %d" kb-validation-max-recursion-depth)
   (message "  Current depth: %d" kb-validation-current-depth))
+
+(message "Reached end of kb-validation.el")
 
 (provide 'kb-validation)
 ;;; kb-validation.el ends here

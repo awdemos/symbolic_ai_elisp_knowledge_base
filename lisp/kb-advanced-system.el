@@ -15,7 +15,9 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'kb-structs)
 (require 'kb-microtheories)
+(require 'kb-query-engine)
 (require 'kb-inference-engine)
 (require 'kb-nonmonotonic)
 (require 'kb-events)
@@ -170,43 +172,7 @@ MT specifies the microtheory to add rule to."
           rule)))))
 
 ;;;###autoload
-(defun kb-add-default (name premises conclusion &optional exceptions strength specificity mt)
-  "Add a default rule with possible exceptions.
-NAME identifies the default rule to add.
-PREMISES specifies the rule's preconditions.
-CONCLUSION specifies the rule's outcome.
-EXCEPTIONS specifies possible exceptions to the rule.
-STRENGTH specifies the default rule's strength.
-SPECIFICITY specifies the rule's specificity level.
-MT specifies the microtheory to add rule to."
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (kb-add-default-rule name premises conclusion exceptions strength specificity)))
-
 ;;;###autoload
-(defun kb-add-exception (name rule-name conditions &optional alternative priority mt)
-  "Add an exception to a default rule.
-NAME identifies the exception to add.
-RULE-NAME specifies the rule to add exception to.
-CONDITIONS specifies when the exception applies.
-ALTERNATIVE specifies alternative conclusion when exception applies.
-PRIORITY specifies the exception's priority level.
-MT specifies the microtheory to add exception to."
-  (let ((kb-current-mt (or mt kb-current-mt)))
-    (let ((exception (kb-exception-create
-                     :name name
-                     :rule-name rule-name
-                     :conditions conditions
-                     :alternative alternative
-                     :priority (or priority 1.0)
-                     :microtheory kb-current-mt)))
-      (push exception kb-exceptions)
-      
-      ;; Update the default rule to include this exception
-      (let ((rule (cl-find rule-name kb-default-rules
-                          :key #'kb-default-rule-name)))
-        (when rule
-          (push name (kb-default-rule-exceptions rule))))
-      exception)))
 
 ;;; Event Management API
 
@@ -215,21 +181,21 @@ MT specifies the microtheory to add exception to."
   "Create a new event.
 TYPE specifies the type of event to create.
 PROPERTIES specifies additional event attributes."
-  (let* ((event-id (intern (format "Event-%d" (cl-incf kb-event-counter))))
+  (let* ((mt (or (plist-get properties :mt) kb-current-mt))
+         (event-id (intern (format "Event-%s-%d" mt (kb-get-event-counter mt))))
          (event (kb-event-create
                 :id event-id
                 :type type
-                :participants (plist-get properties :participants)
-                :roles (plist-get properties :roles)
-                :start-time (plist-get properties :start-time)
+                 :participants (plist-get properties :participants)
+                 :start-time (plist-get properties :start-time)
                 :end-time (plist-get properties :end-time)
                 :duration (plist-get properties :duration)
                 :location (plist-get properties :location)
                 :properties properties
-                :microtheory kb-current-mt)))
+                :microtheory mt)))
     
     (puthash event-id event kb-events)
-    event-id))
+    event))
 
 ;;;###autoload
 (defun kb-define-process (name &rest properties)
@@ -240,10 +206,8 @@ PROPERTIES specifies process characteristics."
                  :name name
                  :typical-duration (plist-get properties :typical-duration)
                  :typical-participants (plist-get properties :typical-participants)
-                 :typical-roles (plist-get properties :typical-roles)
                  :preconditions (plist-get properties :preconditions)
                  :effects (plist-get properties :effects)
-                 :invariants (plist-get properties :invariants)
                  :microtheory kb-current-mt)))
     
     (puthash name process kb-processes)

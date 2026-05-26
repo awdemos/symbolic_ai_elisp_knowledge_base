@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'kb-structs)
 (require 'kb-microtheories)
 (require 'kb-tms)
 
@@ -37,8 +38,14 @@
 (defconst kb-event-counter-start 1000
   "Starting counter for generating event IDs.")
 
-(defvar kb-event-counter kb-event-counter-start
-  "Counter for generating unique event IDs.")
+(defvar kb-event-counters (make-hash-table :test 'equal)
+  "Hash table mapping microtheory names to their event counters.")
+
+(defun kb-get-event-counter (mt-name)
+  "Get the next event counter for microtheory MT-NAME."
+  (let ((counter (gethash mt-name kb-event-counters kb-event-counter-start)))
+    (puthash mt-name (1+ counter) kb-event-counters)
+    counter))
 
 (defvar kb-events (make-hash-table :test 'equal)
   "Hash table storing all events in the system.")
@@ -51,47 +58,6 @@
 
 (defvar kb-current-event nil
   "Currently active event (if any).")
-
-;;; Structures
-
-(cl-defstruct (kb-event (:constructor kb-event-create)
-                                (:copier nil))
-  "An event in the knowledge base."
-  id                ; unique event identifier
-  type              ; event type (e.g., 'meeting, 'walking)
-  participants      ; list of entities participating
-  location          ; where event occurs
-  start-time        ; when event starts
-  end-time          ; when event ends (nil if ongoing)
-  duration          ; how long event lasts (in seconds)
-  microtheory       ; microtheory containing event
-  properties        ; additional properties as plist
-  temporal-info     ; temporal bounds for event
-  certainty         ; confidence level (0.0 to 1.0)
-  justification     ; TMS justification for event
-  created-at        ; timestamp when event was created)
-
-(cl-defstruct (kb-process (:constructor kb-process-create)
-                                 (:copier nil))
-  "A process type definition."
-  name              ; process name/identifier
-  typical-duration ; expected duration in seconds
-  typical-participants ; list of participant types
-  preconditions     ; list of required conditions
-  effects          ; list of effects after process
-  microtheory      ; microtheory where process is defined
-  properties        ; additional properties as plist)
-
-(cl-defstruct (kb-event-relation (:constructor kb-event-relation-create)
-                                     (:copier nil))
-  "A relation between two events."
-  relation-type    ; :event-before, :event-after, :event-during, :event-causal, :event-concurrent
-  from-event       ; event ID that relation originates from
-  to-event         ; event ID that relation points to
-  strength         ; confidence in the relation (0.0 to 1.0)
-  microtheory      ; microtheory where relation holds
-  justification     ; TMS justification for the relation
-  created-at       ; timestamp when relation was created)
 
 ;;; Event Management API
 
@@ -109,9 +75,9 @@ Returns the created event object."
         (unless mt-obj
           (signal 'kb-microtheory-error (list "Microtheory not found" kb-current-mt)))
         
-        ;; Generate unique event ID
-        (cl-incf kb-event-counter)
-        (let* ((id (format "Event-%d" kb-event-counter))
+         ;; Generate unique event ID scoped to microtheory
+        (let* ((counter (kb-get-event-counter kb-current-mt))
+               (id (format "Event-%s-%d" kb-current-mt counter))
                (start-time (or (plist-get properties :start-time) (current-time)))
                (end-time (plist-get properties :end-time))
                (duration (or (plist-get properties :duration)
@@ -153,7 +119,7 @@ Returns the created event object."
              kb-current-mt)
             
             ;; Return event
-            event))))))
+            event)))))
 
 ;;;###autoload
 (defun kb-get-event (event-id)
@@ -351,6 +317,14 @@ PROCESS-NAME is the identifier of the process."
    ((kb-event-completed-p (kb-event-id event))
     "Completed")
    (t "Unknown")))
+
+(defun kb-setup-event-examples ()
+  "Set up example events for testing.
+This is a placeholder function to avoid void-function errors.")
+
+(defun kb-infer-event-relations ()
+  "Infer relations between events.
+This is a placeholder function to avoid void-function errors.")
 
 (provide 'kb-events)
 ;;; kb-events.el ends here

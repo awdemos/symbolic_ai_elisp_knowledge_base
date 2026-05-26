@@ -1,4 +1,5 @@
 ;;; kb-inference-engine.el --- Layered Inference Engine for Knowledge Base
+;; -*- lexical-binding: t; -*-
 
 ;; Author: AI Assistant
 ;; Keywords: ai, inference, reasoning, microtheories

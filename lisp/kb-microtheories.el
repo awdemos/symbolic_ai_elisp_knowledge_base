@@ -15,48 +15,17 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'kb-structs)
 (require 'kb-tms)
 (require 'kb-validation)
+(require 'kb-query-engine)
 
 ;;; Microtheory Structures
-
-(cl-defstruct (kb-microtheory (:constructor kb-microtheory-create)
-                              (:copier nil))
-  "A microtheory context for scoped knowledge."
-  name
-  parent-mts        ; list of direct parent microtheories  
-  facts            ; hash table of facts in this mt
-  rules            ; list of inference rules in this mt
-  inherits-from    ; list of mts to inherit from (deprecated, use parent-mts)
-  temp-p           ; t if this is a temporary microtheory
-  created-at       ; timestamp when created
-  priority         ; priority for conflict resolution (higher = more specific)
-  inheritance-mode ; 'strict, 'override, 'merge
-  local-facts)     ; facts that should not be inherited
-
-(cl-defstruct (kb-fact (:constructor kb-fact-create)
-                       (:copier nil))
-  "A structure representing a fact in the knowledge base."
-  subject predicate object 
-  certainty
-  microtheory      ; which microtheory this fact belongs to
-  justification    ; how this fact was derived
-  temporal-info)   ; temporal validity information
-
-(cl-defstruct (kb-rule (:constructor kb-rule-create)
-                       (:copier nil))
-  "A structure representing an inference rule."
-  name premises conclusion 
-  microtheory      ; which microtheory this rule belongs to
-  priority         ; rule priority for conflict resolution
-  temporal-p)      ; whether this rule handles temporal reasoning
-
-(cl-defstruct (kb-temporal-info (:constructor kb-temporal-info-create)
-                                (:copier nil))
-  "Temporal information for facts and events."
-  valid-from valid-to 
-  during-event
-  happens-at)
+;; Core structures are now defined in kb-structs.el:
+;; - kb-microtheory
+;; - kb-fact
+;; - kb-rule
+;; - kb-temporal-info
 
 ;;; Variables
 
@@ -68,9 +37,6 @@
 
 (defvar kb-temp-mt-counter 0
   "Counter for generating temporary microtheory names.")
-
-(defvar kb-inheritance-cache (make-hash-table :test 'equal)
-  "Cache for inheritance chains to improve performance.")
 
 (defvar kb-cycle-detection-stack nil
   "Stack for detecting cycles during inheritance traversal.")
@@ -326,121 +292,6 @@ If LOCAL-P is t, the fact won't be inherited by child microtheories."
       ;; Retract from TMS
       (kb-tms-retract-fact subject predicate object mt-name))))
 
-(defun kb-query-in-mt (subject predicate mt-name)
-  "Query facts in a specific microtheory."
-  (let ((mt (kb-get-microtheory mt-name)))
-    (when mt
-      (let ((facts (gethash subject (kb-microtheory-facts mt))))
-        (cl-remove-if-not
-         (lambda (fact)
-           (and (eq (kb-fact-predicate fact) predicate)
-                (> (kb-fact-certainty fact) 0)))
-         facts)))))
-
-(defun kb-query-with-inheritance (subject predicate &optional mt-name)
-  "Query facts with proper microtheory inheritance and shadowing."
-  (let* ((mt-name (or mt-name kb-current-mt))
-         (inheritance-chain (kb-get-inheritance-chain mt-name))
-         (all-results nil)
-         (shadowed-facts (make-hash-table :test 'equal)))
-    
-    ;; Collect facts from inheritance chain (most specific first)
-    (dolist (current-mt inheritance-chain)
-      (let* ((current-results (kb-query-in-mt subject predicate current-mt))
-             (mt (kb-get-microtheory current-mt)))
-        
-        ;; Filter out facts that should not be inherited
-        (when (and mt current-results)
-          (setq current-results
-                (cl-remove-if 
-                 (lambda (fact)
-                   (gethash (list (kb-fact-subject fact) 
-                                 (kb-fact-predicate fact) 
-                                 (kb-fact-object fact))
-                           (kb-microtheory-local-facts mt)))
-                 current-results)))
-        
-        ;; Add non-shadowed facts
-        (dolist (fact current-results)
-          (let ((fact-key (list (kb-fact-object fact))))
-            (unless (gethash fact-key shadowed-facts)
-              (push fact all-results)
-              ;; Mark this object as shadowed for less specific MTs
-              (puthash fact-key t shadowed-facts))))))
-    
-    ;; Apply conflict resolution based on inheritance mode
-    (kb-resolve-inheritance-conflicts all-results mt-name)))
-
-(defun kb-resolve-inheritance-conflicts (facts mt-name)
-  "Resolve conflicts between inherited facts based on inheritance mode."
-  (let* ((mt (kb-get-microtheory mt-name))
-         (mode (if mt (kb-microtheory-inheritance-mode mt) 'merge))
-         (grouped-facts (make-hash-table :test 'equal)))
-    
-    ;; Group facts by object value
-    (dolist (fact facts)
-      (let ((key (kb-fact-object fact)))
-        (push fact (gethash key grouped-facts))))
-    
-    ;; Apply resolution strategy
-    (let ((resolved-facts nil))
-      (maphash 
-       (lambda (key fact-group)
-         (setq resolved-facts 
-               (append resolved-facts 
-                       (kb-apply-conflict-resolution fact-group mode))))
-       grouped-facts)
-      resolved-facts)))
-
-(defun kb-apply-conflict-resolution (fact-group mode)
-  "Apply conflict resolution strategy to a group of conflicting facts."
-  (cond
-   ((eq mode 'strict)
-    ;; Only keep facts from most specific microtheory
-    (let ((max-priority (apply #'max 
-                              (mapcar (lambda (fact)
-                                       (kb-get-microtheory-priority 
-                                        (kb-fact-microtheory fact)))
-                                     fact-group))))
-      (cl-remove-if-not 
-       (lambda (fact)
-         (= (kb-get-microtheory-priority (kb-fact-microtheory fact)) max-priority))
-       fact-group)))
-   
-   ((eq mode 'override)
-    ;; Child facts completely override parent facts
-    (list (car (sort fact-group 
-                    (lambda (a b)
-                      (> (kb-get-microtheory-priority (kb-fact-microtheory a))
-                         (kb-get-microtheory-priority (kb-fact-microtheory b))))))))
-   
-   (t ; 'merge mode (default)
-    ;; Keep all facts, weighted by certainty and microtheory priority
-    (sort fact-group 
-          (lambda (a b)
-            (let ((score-a (* (kb-fact-certainty a) 
-                             (1+ (kb-get-microtheory-priority (kb-fact-microtheory a)))))
-                  (score-b (* (kb-fact-certainty b) 
-                             (1+ (kb-get-microtheory-priority (kb-fact-microtheory b))))))
-              (> score-a score-b)))))))
-
-(defun kb-query-with-tms-check (subject predicate &optional mt-name)
-  "Query facts with inheritance, filtering by TMS belief status."
-  (let ((candidates (kb-query-with-inheritance subject predicate mt-name)))
-    (cl-remove-if-not 
-     (lambda (fact)
-       (kb-tms-is-believed (kb-fact-subject fact)
-                          (kb-fact-predicate fact)
-                          (kb-fact-object fact)
-                          (kb-fact-microtheory fact)))
-     candidates)))
-
-(defun kb-fact-equal-p (fact1 fact2)
-  "Check if two facts are equal."
-  (and (eq (kb-fact-subject fact1) (kb-fact-subject fact2))
-       (eq (kb-fact-predicate fact1) (kb-fact-predicate fact2))
-       (equal (kb-fact-object fact1) (kb-fact-object fact2))))
-
 ;;; Inheritance Chain Query Functions
 
 (defun kb-get-ancestors (mt-name)
@@ -540,8 +391,10 @@ If LOCAL-P is t, the fact won't be inherited by child microtheories."
 
 ;;; Inference Engine with Microtheories
 
-(defun kb-add-rule (name premises conclusion &optional priority temporal-p)
-  "Add an inference rule to the current microtheory."
+(defun kb--add-rule-internal (name premises conclusion &optional priority temporal-p)
+  "Add an inference rule to the current microtheory.
+This is the internal implementation; use `kb-add-rule' from kb-advanced-system
+for the public API which supports specifying the microtheory."
   (let* ((mt (kb-get-microtheory kb-current-mt))
          (rule (kb-rule-create
                 :name name
@@ -600,9 +453,14 @@ If LOCAL-P is t, the fact won't be inherited by child microtheories."
     bindings))
 
 (defun kb-variable-p (term)
-  "Check if TERM is a variable (starts with ?)."
-  (and (symbolp term)
-       (string-prefix-p "?" (symbol-name term))))
+  "Check if TERM is a variable (starts with ?).
+In Elisp, ?x is read as a character literal (integer).
+We accept both symbols starting with ? and single-character integers."
+  (or (and (symbolp term)
+           (string-prefix-p "?" (symbol-name term)))
+      (and (integerp term)
+           (>= term 33)
+           (<= term 126))))
 
 (defun kb-apply-bindings (conclusion bindings)
   "Apply variable bindings to conclusion."
@@ -639,20 +497,6 @@ If LOCAL-P is t, the fact won't be inherited by child microtheories."
   (let ((temporal-info (kb-temporal-info-create
                        :happens-at happens-at)))
     (kb-add-fact subject predicate object certainty temporal-info)))
-
-(defun kb-query-at-time (subject predicate time &optional mt-name)
-  "Query facts that are valid at a specific time."
-  (let ((all-facts (kb-query-with-inheritance subject predicate mt-name)))
-    (cl-remove-if-not
-     (lambda (fact)
-       (let ((temporal (kb-fact-temporal-info fact)))
-         (if temporal
-             (and (or (null (kb-temporal-info-valid-from temporal))
-                     (time-less-p (kb-temporal-info-valid-from temporal) time))
-                  (or (null (kb-temporal-info-valid-to temporal))
-                     (time-less-p time (kb-temporal-info-valid-to temporal))))
-           t)))  ; Facts without temporal info are always valid
-     all-facts)))
 
 ;;; Initialization and Validation
 

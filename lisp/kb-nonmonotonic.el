@@ -21,6 +21,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'kb-structs)
 (require 'kb-microtheories)
 
 ;;; Variables
@@ -33,31 +34,6 @@
 
 (defvar kb-defeated-justifications nil
   "List of justifications defeated by more specific rules.")
-
-;;; Structures
-
-(cl-defstruct (kb-default-rule (:constructor kb-default-rule-create)
-                                   (:copier nil))
-  "A default rule with exceptions."
-  name           ; rule name/identifier
-  premises       ; conditions that must hold
-  conclusion     ; what can be inferred when premises hold
-  exceptions     ; list of exceptional cases
-  strength       ; confidence level (0.0 to 1.0)
-  specificity     ; how specific this rule is (higher = more specific)
-  microtheory   ; microtheory containing this rule
-  defeated-p     ; whether this rule has been defeated
-  applies-to     ; list of subjects this rule applies to)
-
-(cl-defstruct (kb-exception (:constructor kb-exception-create)
-                            (:copier nil))
-  "An exception to a default rule."
-  name           ; exception name/identifier
-  applies-to     ; which default rule this exception applies to
-  conditions     ; when this exception triggers
-  conclusion     ; what to infer instead
-  priority       ; exception priority (higher = more specific)
-  microtheory   ; microtheory containing this exception)
 
 ;;; Rule Management API
 
@@ -88,8 +64,8 @@ MT is the microtheory to add rule to."
                    :defeated-p nil
                    :applies-to nil)))
         (push rule kb-default-rules)
-        (message "Added default rule: %s" name))
-      rule)))
+        (message "Added default rule: %s" name)
+        rule))))
 
 ;;;###autoload
 (defun kb-add-exception (name applies-to conditions conclusion &optional priority mt)
@@ -114,8 +90,8 @@ MT is the microtheory to add exception to."
                         :priority (or priority 1.0)
                         :microtheory kb-current-mt)))
         (push exception kb-exceptions)
-        (message "Added exception: %s to rule %s" name applies-to))
-      exception)))
+        (message "Added exception: %s to rule %s" name applies-to)
+        exception))))
 
 ;;; Default Reasoning Engine
 
@@ -142,50 +118,42 @@ MT-NAME is the microtheory to apply defaults to."
           (let ((bindings (kb-match-default-premises rule mt-name)))
             (dolist (binding bindings)
               ;; Check if rule is defeated
-              (unless (kb-default-rule-defeated-p rule)
-                (let ((conclusion (kb-apply-bindings (kb-default-rule-conclusion rule) (list binding)))
-                  (subjects (kb-get-subjects-from-conclusion conclusion)))
+              (unless (kb-default-rule-is-defeated-p rule)
+                 (let* ((conclusion (kb-apply-bindings (kb-default-rule-conclusion rule) binding))
+                        (subjects (kb-get-subjects-from-conclusion conclusion)))
                   (dolist (subject subjects)
                     ;; Check for exceptions
                     (let ((applicable-exceptions 
                            (cl-remove-if-not 
                             (lambda (ex)
                               (kb-exception-conditions-met ex binding))
-                            (kb-get-exceptions-for-rule (kb-default-rule-name rule))))
+                            (kb-get-exceptions-for-rule (kb-default-rule-name rule)))))
                       
                       (when applicable-exceptions
                         (dolist (ex applicable-exceptions)
                           ;; Apply exception instead of default
-                          (let ((ex-conclusion (kb-apply-bindings (kb-exception-conclusion ex) (list binding))))
-                            (push (cons subject (cadr ex-conclusion) (caddr ex-conclusion)) new-facts)
-                            (kb-defeat-rule (kb-default-rule-name rule)
-                                          (kb-exception-name ex)))))
+                             (let ((ex-conclusion (kb-apply-bindings (kb-exception-conclusion ex) (list binding))))
+                             (push (list subject (cadr ex-conclusion) (caddr ex-conclusion)) new-facts)
+                             (kb-defeat-rule (kb-default-rule-name rule)
+                                           (kb-exception-name ex)))))
                     
                     ;; Apply default conclusion if not defeated
-                    (unless (kb-default-rule-defeated-p rule)
-                      (dolist (subject subjects)
-                        (push (cons subject (cadr conclusion) (caddr conclusion)) new-facts))))))))))
+                    (unless (kb-default-rule-is-defeated-p rule)
+                       (push (list subject (cadr conclusion) (caddr conclusion)) new-facts))))))))
       
       ;; Add new facts to microtheory
       (dolist (fact new-facts)
         (kb-add-fact (car fact) (cadr fact) (caddr fact) 0.9))
       
       (message "Default reasoning completed in microtheory: %s" mt-name)
-      mt)))
+      mt)))))
 
 (defun kb-get-subjects-from-conclusion (conclusion)
-  "Extract subjects from a conclusion pattern."
+  "Extract subjects from a conclusion pattern.
+Returns the first element of the conclusion as the subject."
   (if (listp conclusion)
-      (let ((subjects nil))
-        ;; Find all variables in conclusion
-        (dolist (elem conclusion)
-          (when (and (symbolp elem)
-                     (string-match-p "^?" (symbol-name elem)))
-            (push elem subjects)))
-        (when (cdr conclusion)  ; conclusion has more elements
-          (push (cadr conclusion) subjects)))
-        subjects)
-    (list (cadr conclusion))))
+      (list (car conclusion))
+    (list conclusion)))
 
 (defun kb-get-exceptions-for-rule (rule-name)
   "Get all exceptions for a default rule."
@@ -195,7 +163,7 @@ MT-NAME is the microtheory to apply defaults to."
 
 (defun kb-exception-conditions-met (ex binding)
   "Check if exception conditions are satisfied by a binding."
-  (every (lambda (condition)
+  (cl-every (lambda (condition)
            (let ((instantiated (kb-apply-bindings condition (list binding))))
              (kb-query-with-inheritance 
               (car instantiated) (cadr instantiated) (kb-exception-microtheory ex))))
@@ -210,9 +178,14 @@ MT-NAME is the microtheory to apply defaults to."
             kb-defeated-justifications)
       (message "Rule %s defeated by exception %s" rule-name exception-name))))
 
-(defun kb-default-rule-defeated-p (rule)
+(defun kb-default-rule-is-defeated-p (rule)
   "Check if a default rule has been defeated."
-  (kb-default-rule-defeated-p rule))
+  (cl-typecase rule
+    (symbol
+     (let ((rule-obj (cl-find rule kb-default-rules :key #'kb-default-rule-name)))
+       (and rule-obj (kb-default-rule-defeated-p rule-obj))))
+    (t
+     (kb-default-rule-defeated-p rule))))
 
 ;;; Conflict Resolution
 

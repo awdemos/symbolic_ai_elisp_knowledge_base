@@ -208,7 +208,7 @@ If INCREMENTAL-P is true, include only changed data."
     (setq data (plist-put data :events (kb-serialize-events incremental-p)))
     (setq data (plist-put data :processes (kb-serialize-processes incremental-p)))
     (setq data (plist-put data :event-relations (kb-serialize-event-relations incremental-p)))
-    (setq data (plist-put data :event-counter kb-event-counter))
+    (setq data (plist-put data :event-counters (kb-hash-table-to-alist kb-event-counters)))
     
     ;; Non-monotonic reasoning
     (setq data (plist-put data :default-rules (kb-serialize-default-rules incremental-p)))
@@ -327,9 +327,9 @@ If INCREMENTAL-P is true, include only changed data."
 (defun kb-serialize-exception (exception)
   "Serialize an exception structure."
   (list :name (kb-exception-name exception)
-        :rule-name (kb-exception-rule-name exception)
+        :applies-to (kb-exception-applies-to exception)
         :conditions (kb-exception-conditions exception)
-        :alternative (kb-exception-alternative exception)
+        :conclusion (kb-exception-conclusion exception)
         :priority (kb-exception-priority exception)
         :microtheory (kb-exception-microtheory exception)))
 
@@ -411,9 +411,9 @@ If INCREMENTAL-P is true, include only changed data."
   (when (plist-get data :event-relations)
     (setq kb-event-relations (plist-get data :event-relations)))
   
-  ;; Restore event counter
-  (when (plist-get data :event-counter)
-    (setq kb-event-counter (plist-get data :event-counter)))
+  ;; Restore event counters
+  (when (plist-get data :event-counters)
+    (setq kb-event-counters (kb-alist-to-hash-table (plist-get data :event-counters))))
   
   ;; Restore non-monotonic reasoning
   (when (plist-get data :default-rules)
@@ -550,9 +550,9 @@ If INCREMENTAL-P is true, include only changed data."
   "Deserialize an exception structure."
   (kb-exception-create
    :name (plist-get data :name)
-   :rule-name (plist-get data :rule-name)
+   :applies-to (plist-get data :applies-to)
    :conditions (plist-get data :conditions)
-   :alternative (plist-get data :alternative)
+   :conclusion (plist-get data :conclusion)
    :priority (plist-get data :priority)
    :microtheory (plist-get data :microtheory)))
 

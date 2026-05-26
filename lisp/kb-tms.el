@@ -14,27 +14,7 @@
 ;;; Code:
 
 (require 'cl-lib)
-
-;;; Data structures
-
-(cl-defstruct kb-justification
-  "A justification record for a fact."
-  fact           ; The fact being justified
-  premises       ; List of premise facts
-  rule          ; Rule that derived this fact (optional)
-  support-type  ; 'direct, 'derived, 'default, 'assumption
-  timestamp     ; When this justification was created
-  active-p)     ; Whether this justification is currently active
-
-(cl-defstruct kb-fact-record
-  "Extended fact record with TMS information."
-  subject
-  predicate
-  object
-  microtheory
-  justifications    ; List of kb-justification structs
-  dependents       ; Facts that depend on this one
-  belief-status)   ; 'in, 'out, 'unknown
+(require 'kb-structs)
 
 ;;; Global TMS state
 

@@ -126,7 +126,7 @@ OPERATION is the name of the operation being profiled."
         (setf (kb-profile-entry-total-time entry) (+ (kb-profile-entry-total-time entry) duration))
         (setf (kb-profile-entry-avg-time entry) (/ (kb-profile-entry-total-time entry) (kb-profile-entry-count entry)))
         (setf (kb-profile-entry-min-time entry) (min (kb-profile-entry-min-time entry) duration))
-        (setf (kb-profile-entry-max-time entry) (max (kb-profile-entry-max-time entry) duration)))))))
+        (setf (kb-profile-entry-max-time entry) (max (kb-profile-entry-max-time entry) duration)))))
 
 ;;;###autoload
 (defun kb-debug-show-profile ()
@@ -180,7 +180,7 @@ MT-NAME is the name of the microtheory to inspect."
                     (princ (format "  (%s %s %s)\n" 
                                    subject 
                                    (kb-fact-predicate fact)
-                                   (kb-fact-object fact))))
+                                   (kb-fact-object fact)))))
                 (kb-microtheory-facts mt))
       (princ "\nRules:\n")
       (dolist (rule (kb-microtheory-rules mt))
