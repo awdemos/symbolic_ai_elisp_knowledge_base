@@ -77,7 +77,8 @@ Returns the created event object."
         
          ;; Generate unique event ID scoped to microtheory
         (let* ((counter (kb-get-event-counter kb-current-mt))
-               (id (format "Event-%s-%d" kb-current-mt counter))
+                (id (or (plist-get properties :id)
+                        (format "Event-%s-%d" kb-current-mt counter)))
                (start-time (or (plist-get properties :start-time) (current-time)))
                (end-time (plist-get properties :end-time))
                (duration (or (plist-get properties :duration)
@@ -107,19 +108,15 @@ Returns the created event object."
             ;; Store event
             (puthash id event kb-events)
             
-            ;; Add event to microtheory facts
-            (kb-add-fact-with-justification
-             (intern id)
-             'type
-             event-type
-             `((kb-event-id ,id))
-             'event-created
-             (list id start-time end-time))
-             certainty
-             kb-current-mt)
+            ;; Add event facts to microtheory
+            (let ((event-sym (intern id)))
+              (kb-add-fact event-sym 'is-a event-type certainty)
+              (kb-add-fact event-sym 'participants participants certainty)
+              (when location
+                (kb-add-fact event-sym 'location location certainty)))
             
             ;; Return event
-            event)))))
+            event))))))
 
 ;;;###autoload
 (defun kb-get-event (event-id)

@@ -53,6 +53,11 @@ MT is the microtheory to add rule to."
       (unless mt-obj
         (signal 'kb-microtheory-error (list "Microtheory not found" kb-current-mt)))
       
+      ;; Remove existing rule with same name to avoid duplicates
+      (setq kb-default-rules
+            (cl-remove-if (lambda (r) (eq (kb-default-rule-name r) name))
+                          kb-default-rules))
+      
       (let ((rule (kb-default-rule-create
                    :name name
                    :premises premises
@@ -81,6 +86,11 @@ MT is the microtheory to add exception to."
            (mt-obj (kb-get-microtheory kb-current-mt)))
       (unless mt-obj
         (signal 'kb-microtheory-error (list "Microtheory not found" kb-current-mt)))
+      
+      ;; Remove existing exception with same name to avoid duplicates
+      (setq kb-exceptions
+            (cl-remove-if (lambda (e) (eq (kb-exception-name e) name))
+                          kb-exceptions))
       
       (let ((exception (kb-exception-create
                         :name name
@@ -132,7 +142,7 @@ MT-NAME is the microtheory to apply defaults to."
                       (when applicable-exceptions
                         (dolist (ex applicable-exceptions)
                           ;; Apply exception instead of default
-                             (let ((ex-conclusion (kb-apply-bindings (kb-exception-conclusion ex) (list binding))))
+                             (let ((ex-conclusion (kb-apply-bindings (kb-exception-conclusion ex) binding)))
                              (push (list subject (cadr ex-conclusion) (caddr ex-conclusion)) new-facts)
                              (kb-defeat-rule (kb-default-rule-name rule)
                                            (kb-exception-name ex)))))
@@ -164,7 +174,7 @@ Returns the first element of the conclusion as the subject."
 (defun kb-exception-conditions-met (ex binding)
   "Check if exception conditions are satisfied by a binding."
   (cl-every (lambda (condition)
-           (let ((instantiated (kb-apply-bindings condition (list binding))))
+           (let ((instantiated (kb-apply-bindings condition binding)))
              (kb-query-with-inheritance 
               (car instantiated) (cadr instantiated) (kb-exception-microtheory ex))))
          (kb-exception-conditions ex)))

@@ -33,10 +33,32 @@
 ;;; High-level API
 
 ;;;###autoload
+(defun kb-clear ()
+  "Clear all knowledge base state for a fresh start."
+  (interactive)
+  ;; Clear microtheory facts
+  (maphash (lambda (name mt)
+             (clrhash (kb-microtheory-facts mt))
+             (setf (kb-microtheory-local-facts mt) (make-hash-table :test 'equal)))
+           kb-microtheories)
+  ;; Clear default rules and exceptions
+  (kb-clear-defaults)
+  ;; Clear events
+  (clrhash kb-events)
+  ;; Clear inheritance cache
+  (kb-clear-inheritance-cache)
+  ;; Reset current microtheory
+  (setq kb-current-mt 'BaseMt)
+  (message "KB state cleared"))
+
+;;;###autoload
 (defun kb-init (&optional base-mt)
   "Initialize the knowledge base system.
 Optional BASE-MT specifies the base microtheory to use."
   (interactive)
+  
+  ;; Clear existing state for clean initialization
+  (kb-clear)
   
   ;; Initialize microtheories
   (unless (kb-get-microtheory 'BaseMt)
@@ -120,14 +142,24 @@ MT specifies the microtheory to retract from."
 
 ;;;###autoload
 (defun kb-query (subject predicate &optional mt)
-  "Query the knowledge base.
+  "Query the knowledge base and return list of objects.
 SUBJECT and PREDICATE identify the facts to query.
 MT specifies the microtheory to query in."
   (interactive "sSubject: \nsPredicate: ")
   (kb-with-validation kb-query (list subject predicate mt)
     (kb-with-error-recovery
-      (let ((kb-current-mt (or mt kb-current-mt)))
-        (kb-query-with-inheritance subject predicate mt)))))
+      (let ((kb-current-mt (or mt kb-current-mt))
+            (facts (kb-query-with-inheritance subject predicate mt)))
+        (mapcar #'kb-fact-object facts)))))
+
+;;;###autoload
+(defun kb-query-temporal (subject predicate time &optional mt)
+  "Query temporally valid facts and return their objects.
+SUBJECT and PREDICATE identify the facts to query.
+TIME is the time point to check validity at.
+MT specifies the microtheory to query in."
+  (let ((facts (kb-query-at-time subject predicate time mt)))
+    (mapcar #'kb-fact-object facts)))
 
 ;;;###autoload
 (defun kb-ask (query &optional mt timeout)
@@ -182,19 +214,31 @@ MT specifies the microtheory to add rule to."
 TYPE specifies the type of event to create.
 PROPERTIES specifies additional event attributes."
   (let* ((mt (or (plist-get properties :mt) kb-current-mt))
-         (event-id (intern (format "Event-%s-%d" mt (kb-get-event-counter mt))))
+         (event-id (or (plist-get properties :id)
+                       (intern (format "Event-%s-%d" mt (kb-get-event-counter mt)))))
+         (participants (or (plist-get properties :participants) '()))
+         (location (plist-get properties :location))
+         (certainty (or (plist-get properties :certainty) 1.0))
          (event (kb-event-create
                 :id event-id
                 :type type
-                 :participants (plist-get properties :participants)
+                 :participants participants
                  :start-time (plist-get properties :start-time)
                 :end-time (plist-get properties :end-time)
                 :duration (plist-get properties :duration)
-                :location (plist-get properties :location)
+                :location location
                 :properties properties
                 :microtheory mt)))
     
     (puthash event-id event kb-events)
+    
+    ;; Add event facts to microtheory for querying
+    (kb-add-fact event-id 'is-a type certainty)
+    (when participants
+      (kb-add-fact event-id 'participants participants certainty))
+    (when location
+      (kb-add-fact event-id 'location location certainty))
+    
     event))
 
 ;;;###autoload

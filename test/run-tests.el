@@ -21,5 +21,7 @@
   (load-file (expand-file-name "test-simple-persistence.el" (file-name-directory load-file-name)))
   (load-file (expand-file-name "test-nonmonotonic.el" (file-name-directory load-file-name)))
   (load-file (expand-file-name "test-temporal.el" (file-name-directory load-file-name)))
+  (load-file (expand-file-name "test-fixed-components.el" (file-name-directory load-file-name)))
+  (load-file (expand-file-name "test-hallucination.el" (file-name-directory load-file-name)))
 
 ;;; run-tests.el ends here

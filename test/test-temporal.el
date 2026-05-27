@@ -52,13 +52,13 @@
   "Test event creation with temporal properties."
   (kb-init)
   
-  (kb-create-event 'meeting-1 :participants '(Alice Bob) :start "2025-01-01T09:00" :end "2025-01-01T10:00")
+  (kb-create-event 'meeting :id 'meeting-1 :participants '(Alice Bob) :start "2025-01-01T09:00" :end "2025-01-01T10:00")
   
   ;; Event should exist
   (should (kb-query 'meeting-1 'is-a))
   
   ;; Participants should be recorded
-  (let ((participants (kb-query 'meeting-1 'participants)))
+  (let ((participants (car (kb-query 'meeting-1 'participants))))
     (should (member 'Alice participants))
     (should (member 'Bob participants))))
 

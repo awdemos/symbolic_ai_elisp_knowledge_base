@@ -655,10 +655,13 @@ If INCREMENTAL-P is true, include only changed data."
     
     ;; Check fact microtheory references
     (maphash (lambda (name mt)
-               (dolist (fact (kb-microtheory-facts mt))
-                 (unless (kb-get-microtheory (kb-fact-microtheory fact))
-                   (push (format "Fact references non-existent microtheory %s" 
-                               (kb-fact-microtheory fact)) errors))))
+               (let ((facts-ht (kb-microtheory-facts mt)))
+                 (maphash (lambda (subject fact-list)
+                            (dolist (fact fact-list)
+                              (unless (kb-get-microtheory (kb-fact-microtheory fact))
+                                (push (format "Fact references non-existent microtheory %s" 
+                                            (kb-fact-microtheory fact)) errors))))
+                          facts-ht)))
              kb-microtheories)
     
     ;; Check TMS consistency

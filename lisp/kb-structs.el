@@ -81,7 +81,8 @@
                                  (:copier nil))
   "A relation between two events."
   relation-type from-event to-event
-  strength microtheory justification)
+  strength microtheory justification
+  created-at)
 
 ;;; Default Rule Structures
 

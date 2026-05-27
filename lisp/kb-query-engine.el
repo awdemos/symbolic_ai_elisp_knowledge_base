@@ -150,18 +150,20 @@ Only returns facts that the TMS considers currently believed."
 
 (defun kb-query-at-time (subject predicate time &optional mt-name)
   "Query facts that are valid at a specific TIME.
-Only returns facts whose temporal validity includes TIME."
+Only returns facts whose temporal validity includes TIME.
+TIME should be an ISO date string (e.g. \"2025-01-01\")."
   (let ((all-facts (kb-query-with-inheritance subject predicate mt-name)))
     (cl-remove-if-not
      (lambda (fact)
        (let ((temporal (kb-fact-temporal-info fact)))
          (if temporal
              (and (or (null (kb-temporal-info-valid-from temporal))
-                     (time-less-p (kb-temporal-info-valid-from temporal) time))
+                      (or (string= (kb-temporal-info-valid-from temporal) time)
+                          (string-lessp (kb-temporal-info-valid-from temporal) time)))
                   (or (null (kb-temporal-info-valid-to temporal))
-                     (time-less-p time (kb-temporal-info-valid-to temporal))))
+                      (string-lessp time (kb-temporal-info-valid-to temporal))))
            t)))  ; Facts without temporal info are always valid
-     all-facts)))
+      all-facts)))
 
 ;;; Utility Functions
 

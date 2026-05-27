@@ -428,27 +428,36 @@ for the public API which supports specifying the microtheory."
       (kb-add-fact (car fact) (cadr fact) (caddr fact) 1.0))))
 
 (defun kb-match-premises (premises mt-name)
-  "Match premises against knowledge in microtheory with inheritance."
+  "Match premises against knowledge in microtheory with inheritance.
+Premises are triples: (subject predicate [object])."
   (let ((bindings '(())))  ; Start with empty binding
     (dolist (premise premises)
       (let* ((subject (car premise))
              (predicate (cadr premise))
+             (expected-object (caddr premise))
              (new-bindings '()))
         (if (kb-variable-p subject)
             ;; Variable subject - need to find all matching facts
-            (maphash 
-             (lambda (subj facts)
-               (dolist (fact facts)
-                 (when (eq (kb-fact-predicate fact) predicate)
-                   (dolist (binding bindings)
-                     (let ((new-binding (cons (cons subject subj) binding)))
-                       (push new-binding new-bindings))))))
-             (kb-microtheory-facts (kb-get-microtheory mt-name)))
+            (let ((seen-subjects (make-hash-table :test 'equal)))
+              (maphash 
+               (lambda (subj facts)
+                 (dolist (fact facts)
+                   (when (and (eq (kb-fact-predicate fact) predicate)
+                              (or (null expected-object)
+                                  (equal (kb-fact-object fact) expected-object))
+                              (not (gethash subj seen-subjects)))
+                     (puthash subj t seen-subjects)
+                     (dolist (binding bindings)
+                       (let ((new-binding (cons (cons subject subj) binding)))
+                         (push new-binding new-bindings))))))
+               (kb-microtheory-facts (kb-get-microtheory mt-name))))
           ;; Concrete subject
           (let ((results (kb-query-with-inheritance subject predicate mt-name)))
             (dolist (fact results)
-              (dolist (binding bindings)
-                (push binding new-bindings)))))
+              (when (or (null expected-object)
+                        (equal (kb-fact-object fact) expected-object))
+                (dolist (binding bindings)
+                  (push binding new-bindings))))))
         (setq bindings new-bindings)))
     bindings))
 

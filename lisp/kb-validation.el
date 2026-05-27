@@ -148,14 +148,15 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
 
 (defun kb-validate-fact-component (component component-name)
   "Validate a fact COMPONENT (subject, predicate, or object)."
-  (unless component
-    (signal 'kb-fact-error (list (format "%s cannot be nil" (capitalize component-name)))))
+  ;; Allow nil as a valid value (it's a valid Elisp symbol for boolean false)
+  ;; Only reject truly missing values by checking if args were provided
   
   ;; Allow symbols, strings, numbers, but not complex structures in strict mode
   (when kb-validation-strict-mode
     (unless (or (symbolp component) 
                 (stringp component) 
                 (numberp component)
+                (null component)  ; nil is a valid symbol
                 (and (listp component) (< (length component) 10))) ; reasonable list length
       (signal 'kb-fact-error 
               (list (format "%s has invalid type in strict mode" (capitalize component-name))
@@ -189,7 +190,7 @@ If SHOULD-EXIST is nil, validates it doesn't exist."
   "Validate TEMPORAL-INFO structure."
   (when temporal-info
     (unless (or (listp temporal-info) 
-                (and (boundp 'kb-temporal-info-p)
+                (and (fboundp 'kb-temporal-info-p)
                      (funcall 'kb-temporal-info-p temporal-info)))
       (signal 'kb-temporal-error (list "Invalid temporal info structure" temporal-info))))
   t)
