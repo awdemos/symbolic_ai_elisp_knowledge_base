@@ -465,3 +465,16 @@ git log --oneline -10
 
 **Last Updated**: 2026-01-11
 **Maintained By**: OpenCode AI Agents
+
+## Deployment
+
+Observed deployment configuration:
+
+- Container (`Dockerfile`) — build with `docker build -t <image> .`
+- Makefile present — inspect `make help` or `make deploy`
+
+General redeploy process:
+
+1. Commit and push changes to the default branch.
+2. Trigger the relevant CI/CD pipeline or run the documented deploy command.
+3. If the project is served via GitHub Pages, the site redeploys automatically after the push.
