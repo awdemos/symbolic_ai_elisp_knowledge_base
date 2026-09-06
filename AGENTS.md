@@ -478,3 +478,17 @@ General redeploy process:
 1. Commit and push changes to the default branch.
 2. Trigger the relevant CI/CD pipeline or run the documented deploy command.
 3. If the project is served via GitHub Pages, the site redeploys automatically after the push.
+
+
+## Setup commands
+- Compile elisp: `make compile`
+- Run tests: `make test`
+- Run tests directly: `emacs --batch -l test/run-tests.el -f ert-run-tests-batch-and-exit`
+- Build Docker image: `docker build -t symbolic-kb .`
+
+## Code style
+- Emacs Lisp with `lexical-binding: t` in every `.el` file header
+- kebab-case names: `kb-current-mt`, exported `kb-assert`, internal `kb--internal`
+- Require dependencies explicitly; no duplicate requires
+- Use `kb-with-validation` for validation and `condition-case` for graceful fallbacks
+- Document every function with a docstring
